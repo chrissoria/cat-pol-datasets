@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 build_federal_bills.py --incremental --max-bills 2000)",
+      "Bash(bash cloud_setup.sh)",
+      "Bash(python3 -c \"import pandas, pyarrow, requests, dotenv, datasets, huggingface_hub\")"
+    ]
+  }
+}

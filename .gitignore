@@ -1,0 +1,11 @@
+# Local working copies of the datasets, scraping state and run logs
+.*_cache*.parquet
+*.parquet
+checkpoints/
+logs/
+# Secrets live one level above this directory and never belong here
+.env
+.env.*
+__pycache__/
+*.pyc
+.DS_Store
