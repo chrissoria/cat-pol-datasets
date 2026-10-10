@@ -91,8 +91,12 @@ LEADING_COL_ORDER = [
 ]
 
 
+API_FAILURES = 0  # requests that failed after all retries; the fetch loop watches this
+
+
 def api_get(endpoint, params=None, retries=3):
     """Make a Congress.gov API request with retry logic."""
+    global API_FAILURES
     params = params or {}
     params["api_key"] = API_KEY
     params["format"] = "json"
@@ -112,7 +116,9 @@ def api_get(endpoint, params=None, retries=3):
                 time.sleep(2)
                 continue
             log.error(f"API request failed: {endpoint} — {e}")
+            API_FAILURES += 1
             return None
+    API_FAILURES += 1
     return None
 
 
@@ -493,7 +499,11 @@ def main():
     parser.add_argument("--max-bills", type=int, default=None,
                         help="With --incremental: fetch at most this many bills, oldest update first; "
                              "the rest wait for the next run")
+    parser.add_argument("--max-minutes", type=float, default=None,
+                        help="Stop fetching after this many minutes and publish what was fetched; "
+                             "the rest wait for the next run")
     args = parser.parse_args()
+    started = time.monotonic()
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
@@ -553,6 +563,7 @@ def main():
 
     # Fetch details for each bill
     rows = []
+    failed_in_a_row = 0
     for i, bill in enumerate(bills_to_fetch):
         bill_type = bill.get("type", "HR").lower()
         bill_number = bill.get("number", "")
@@ -560,8 +571,19 @@ def main():
         if i > 0 and i % 50 == 0:
             log.info(f"Processing {i}/{len(bills_to_fetch)}...")
 
+        if args.max_minutes and (time.monotonic() - started) / 60 >= args.max_minutes:
+            log.warning(f"Time budget of {args.max_minutes:g} minutes reached after {i} bills; "
+                        f"{len(bills_to_fetch) - i} left for the next run")
+            break
+        if failed_in_a_row >= 10:
+            log.error(f"10 bills in a row failed; Congress.gov looks down. Stopping after {i} bills; "
+                      f"{len(bills_to_fetch) - i} left for the next run")
+            break
+
+        failures_before = API_FAILURES
         detail = fetch_bill_detail(CONGRESS, bill_type, bill_number)
         if not detail:
+            failed_in_a_row += 1
             continue
 
         time.sleep(0.3)
@@ -574,6 +596,14 @@ def main():
 
         actions = fetch_bill_actions(CONGRESS, bill_type, bill_number)
         time.sleep(0.3)
+
+        if API_FAILURES > failures_before:
+            # A failed text, subjects or actions call would store a wrong status or
+            # empty fields under a fresh update date. Leave the bill for the next run.
+            log.warning(f"Skipping {bill_type.upper()} {bill_number}: a request failed; it will be retried")
+            failed_in_a_row += 1
+            continue
+        failed_in_a_row = 0
 
         row = build_bill_row(bill, detail, text_content, text_version, subjects, actions)
         rows.append(row)

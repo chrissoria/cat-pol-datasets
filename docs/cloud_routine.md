@@ -8,7 +8,7 @@ job `com.catpol.federal-bills-updater`, which stopped launching after
 
 The routine is an operator. It runs one command and reports what it printed:
 
-    python3 build_federal_bills.py --incremental --max-bills 2000
+    python3 build_federal_bills.py --incremental --max-bills 2000 --max-minutes 90
 
 It pulls and organizes bills only. Summaries (`summarize_federal_bills.py`) and
 roll-call votes (`build_federal_votes.py`) are not part of the routine.
@@ -24,10 +24,17 @@ roll-call votes (`build_federal_votes.py`) are not part of the routine.
 4. It merges them in, keeps existing summaries, rebuilds the vote columns from
    `chrissoria/federal-votes`, and pushes the dataset.
 
-`--max-bills 2000` caps a run at about 1 hour 45 minutes. Bills are taken
-oldest update first and each is compared with its own cached row, so whatever a
-capped or failed run leaves is picked up by the next one. A normal day is a few
-hundred bills.
+A cloud session kills a background command after 2 hours (the first test run,
+2026-10-09, died that way with nothing published). So `--max-minutes 90` stops
+fetching 90 minutes after the start, and the run merges and pushes what it has.
+`--max-bills 2000` is a second cap. Bills are taken oldest update first and each
+is compared with its own cached row, so whatever a capped, timed-out or failed
+run leaves is picked up by the next one. A bill takes 3 to 4 seconds; a normal
+day is a few hundred bills.
+
+A bill is skipped, and retried on the next run, when any of its requests fails,
+because a failed actions call would otherwise store the wrong status. After 10
+failed bills in a row the run stops fetching and publishes what it has.
 
 Bills with no text yet are fetched and dropped, so they are retried on every
 run, last in the queue. A bill updated today or yesterday is fetched again even
@@ -102,9 +109,9 @@ added before or after. They are pre-approved only in this exact form.
      bash cloud_setup.sh
    If the setup script fails, stop and report its output verbatim.
 2. Run exactly:
-     python3 build_federal_bills.py --incremental --max-bills 2000
-   Use the Bash tool with run_in_background, because the job can take up to two
-   hours. Wait for it to finish; do not end the session while it is running.
+     python3 build_federal_bills.py --incremental --max-bills 2000 --max-minutes 90
+   Use the Bash tool with run_in_background, because the job takes up to 95
+   minutes. Wait for it to finish; do not end the session while it is running.
 3. Report: the headline OK (exit 0) or FAILED (any other exit), the
    "Incremental:" line, any "Capped at" line, the "RESULT:" line, and every
    line containing ERROR or WARNING, verbatim.
