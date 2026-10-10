@@ -31,6 +31,8 @@ def test_failed_vote_is_read_from_the_latest_action():
     assert stage("Calendared", failed) == "failed_floor_vote"
     cloture = "Cloture on the motion to proceed to the measure not invoked in Senate by Yea-Nay Vote. 51 - 47."
     assert stage("Senate Floor", cloture) == "failed_floor_vote"
+    rejected = "Motion to proceed to consideration of measure rejected in Senate by Yea-Nay Vote. 48 - 51. Record Vote Number: 251."
+    assert stage("Calendared", rejected) == "failed_floor_vote"
     # Passing later outranks an earlier failure.
     assert stage("Passed House", failed) == "passed_one_chamber"
 

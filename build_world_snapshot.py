@@ -326,7 +326,7 @@ def bill_events(bill_id, row, final, since, find_actor=None, roles=None):
     return events
 
 
-_FAILED_VOTE = re.compile(r"\bfailed\b|not invoked", re.I)
+_FAILED_VOTE = re.compile(r"\bfailed\b|not invoked|rejected in (?:the )?(?:senate|house)", re.I)
 # How far a bill has got, as one digit per bill in the search index.
 STAGES = ("in_committee", "out_of_committee", "failed_floor_vote", "passed_one_chamber", "passed_both_chambers", "law")
 
