@@ -343,6 +343,34 @@ def select_bills_to_fetch(all_bills, existing, max_bills=None):
     return ordered
 
 
+def hf_write_problem():
+    """Return why the token cannot write to the dataset, or None if it looks able to.
+
+    Checked before fetching, because a push refused at the end wastes the whole run.
+    Only a clear answer stops the run; an unfamiliar response lets it proceed.
+    """
+    try:
+        from huggingface_hub import HfApi
+        info = HfApi(token=HF_TOKEN).whoami()
+    except Exception as e:
+        return f"Hugging Face rejected the token: {e}"
+    token = ((info.get("auth") or {}).get("accessToken")) or {}
+    if token.get("role") == "read":
+        return "the token is read-only"
+    scoped = (token.get("fineGrained") or {}).get("scoped")
+    if token.get("role") == "fineGrained" and scoped:
+        owner = HF_REPO.split("/")[0]
+        granted = set()
+        for scope in scoped:
+            entity = scope.get("entity") or {}
+            if entity.get("name") in (HF_REPO, owner):
+                granted |= set(scope.get("permissions") or [])
+        if "repo.write" not in granted:
+            return (f"the fine-grained token has no write permission on {HF_REPO} "
+                    f"(it has: {sorted(granted) or 'nothing for this repo'})")
+    return None
+
+
 def load_cache():
     """Load existing cached data."""
     bootstrap_cache_from_hub(HF_REPO, CACHE_FILE)
@@ -524,6 +552,11 @@ def main():
     if not args.dry_run and not HF_TOKEN:
         log.error("No HuggingFace token found; stopping before fetching anything")
         sys.exit(1)
+    if not args.dry_run:
+        problem = hf_write_problem()
+        if problem:
+            log.error(f"Cannot publish: {problem}. Stopping before fetching anything.")
+            sys.exit(1)
 
     # Fetch bill listing from Congress.gov
     all_bills = []
