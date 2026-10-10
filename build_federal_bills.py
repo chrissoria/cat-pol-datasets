@@ -480,13 +480,24 @@ def build_bill_row(bill_summary, detail, text_content, text_version, subjects, a
 
 
 def bootstrap_cache_from_hub(repo_id, cache_file):
-    """Seed a missing local cache from the published dataset (fresh clone, cloud run)."""
+    """Seed a missing local cache from the published dataset (fresh clone, cloud run).
+
+    Reads the parquet files directly. `load_dataset` casts them to the column
+    list on the dataset card, and fails when the card is behind the data.
+    """
     if cache_file.exists():
         return
     try:
-        from datasets import load_dataset
+        from huggingface_hub import HfApi, hf_hub_download
         log.info(f"No local {cache_file.name}; downloading {repo_id}")
-        df = load_dataset(repo_id, split="train", token=HF_TOKEN).to_pandas()
+        files = sorted(f for f in HfApi(token=HF_TOKEN).list_repo_files(repo_id, repo_type="dataset")
+                       if f.startswith("data/train-") and f.endswith(".parquet"))
+        if not files:
+            raise FileNotFoundError("no data/train-*.parquet files in the dataset")
+        df = pd.concat(
+            [pd.read_parquet(hf_hub_download(repo_id, f, repo_type="dataset", token=HF_TOKEN)) for f in files],
+            ignore_index=True,
+        )
         df.to_parquet(cache_file, index=False)
         log.info(f"Seeded {cache_file.name} with {len(df)} rows from {repo_id}")
     except Exception as e:
@@ -705,6 +716,30 @@ def build_vote_aggregates():
     return best.drop(columns=["_priority", "date_of_vote", "chamber", "roll_call_number", "vote_type"])
 
 
+def sync_card_features(ds, repo_id=None):
+    """Make the dataset card list the columns that were just pushed. Never fatal.
+
+    `push_to_hub` keeps the column list already on the card when the dataset has
+    one split, so a new column leaves the card behind the data and
+    `load_dataset` then refuses to read it.
+    """
+    try:
+        from huggingface_hub import DatasetCard
+        repo_id = repo_id or HF_REPO
+        card = DatasetCard.load(repo_id, token=HF_TOKEN)
+        info = card.data.get("dataset_info")
+        wanted = ds.features._to_yaml_list()
+        if not isinstance(info, dict) or info.get("features") == wanted:
+            return False
+        info["features"] = wanted
+        card.push_to_hub(repo_id, token=HF_TOKEN, commit_message="Update the column list on the card")
+        log.info(f"Updated the column list on the {repo_id} card ({len(wanted)} columns)")
+        return True
+    except Exception as e:
+        log.warning(f"Could not update the column list on the dataset card: {e}")
+        return False
+
+
 def push_to_hf(df):
     """Push dataset to HuggingFace."""
     from datasets import Dataset
@@ -714,6 +749,7 @@ def push_to_hf(df):
     ds = Dataset.from_pandas(df)
     ds.push_to_hub(HF_REPO, token=HF_TOKEN, private=False)
     log.info(f"Pushed {len(df)} rows to https://huggingface.co/datasets/{HF_REPO}")
+    sync_card_features(ds)
     return True
 
 
