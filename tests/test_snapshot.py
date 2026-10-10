@@ -56,3 +56,18 @@ def test_pending_round_trip(tmp_path):
     assert pending["id"].tolist() == ["119-hr-9999"]
     assert "text" not in pending.columns
     assert snapshot.read_pending(tmp_path / "missing.parquet", set()).empty
+
+
+def test_fate_of_names_how_a_bill_died():
+    fate = snapshot.fate_of
+    assert fate("Vetoed", "Vetoed by President.", "vetoed", "2026-01-01", False, "2025-10-09") == "v"
+    assert fate("Signed into Law", "Became Public Law No: 119-1.", "law", "2025-02-01", False, "2025-10-09") == "."
+    assert fate("Calendared", "Motion to proceed to consideration of measure rejected in Senate.", "calendar", "2026-09-01", False, "2025-10-09") == "f"
+    # The current Congress: silence for a year, and nothing sooner.
+    assert fate("In Committee", "Referred to the Committee on Ways and Means.", "committee", "2025-03-01", False, "2025-10-09") == "s"
+    assert fate("In Committee", "Referred to the Committee on Ways and Means.", "committee", "2026-03-01", False, "2025-10-09") == "."
+    # A finished Congress: everything that did not succeed died where it stood.
+    assert fate("In Committee", "Referred to the Committee on Ways and Means.", "committee", "2024-03-01", True, "") == "c"
+    assert fate("Calendared", "Placed on the Union Calendar.", "calendar", "2024-03-01", True, "") == "w"
+    assert fate("Passed House", "Received in the Senate.", "other_chamber", "2024-03-01", True, "") == "o"
+    assert fate("Passed House", "Agreed to.", "adopted", "2024-03-01", True, "") == "."
