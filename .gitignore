@@ -13,3 +13,5 @@ __pycache__/
 world/
 # Local copy of the committee tables
 committees/
+# Bulk files, tables and map files of finished Congresses
+archive/

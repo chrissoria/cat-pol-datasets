@@ -85,11 +85,25 @@ def display_name(last_first):
     return f"{parts[1]} {parts[0]}" if len(parts) == 2 else last_first
 
 
-def fetch_roster():
-    """Members of this Congress from Congress.gov."""
+def congress_years(congress):
+    """(first year, last year) of a Congress: the 118th is (2023, 2025)."""
+    start = 1789 + 2 * (int(congress) - 1)
+    return start, start + 2
+
+
+def chamber_in(terms, congress):
+    """The chamber a member sat in during `congress`, from the terms Congress.gov lists."""
+    start, _ = congress_years(congress)
+    sat = [t for t in terms if int(t.get("startYear") or 0) <= start + 1 and int(t.get("endYear") or 9999) > start]
+    return ((sat or terms)[-1].get("chamber") if terms else "") or ""
+
+
+def fetch_roster(congress=None):
+    """Members of a Congress (this one unless told otherwise) from Congress.gov."""
+    congress = congress or bills.CONGRESS
     members, offset = [], 0
     while True:
-        data = bills.api_get(f"/member/congress/{bills.CONGRESS}", {"limit": 250, "offset": offset, "currentMember": "false"})
+        data = bills.api_get(f"/member/congress/{congress}", {"limit": 250, "offset": offset, "currentMember": "false"})
         page = (data or {}).get("members") or []
         members.extend(page)
         offset += 250
@@ -98,7 +112,7 @@ def fetch_roster():
     roster = []
     for member in members:
         terms = (member.get("terms") or {}).get("item") or []
-        chamber = (terms[-1].get("chamber") if terms else "") or ""
+        chamber = chamber_in(terms, congress)
         roster.append({
             "id": member.get("bioguideId") or "",
             "name": display_name(member.get("name") or ""),
@@ -111,11 +125,11 @@ def fetch_roster():
     return [member for member in roster if member["id"]]
 
 
-def fetch_committees():
-    """Full committees of this Congress: {code: {name, chamber}}."""
+def fetch_committees(congress=None):
+    """Full committees of a Congress (this one unless told otherwise): {code: {name, chamber}}."""
     found, offset = {}, 0
     while True:
-        data = bills.api_get(f"/committee/{bills.CONGRESS}", {"limit": 250, "offset": offset})
+        data = bills.api_get(f"/committee/{congress or bills.CONGRESS}", {"limit": 250, "offset": offset})
         page = (data or {}).get("committees") or []
         for committee in page:
             code = committee.get("systemCode") or ""
@@ -362,7 +376,13 @@ def read_pending(pending_file, known_ids):
         return pd.DataFrame()
 
 
-def build(cache_file, roster=None, committees=None, roles=None, pending_file=None):
+def build(cache_file, roster=None, committees=None, roles=None, pending_file=None, congress=None, world_days=WORLD_DAYS):
+    """Build the map file and the search index from a bills table.
+
+    `congress` names a finished Congress to build instead of the current one, and
+    `world_days=None` puts every bill on the map rather than the recently active ones.
+    """
+    congress = int(congress or bills.CONGRESS)
     wanted = [
         "bill_type", "bill_number", "congress", "title", "status", "last_action_text", "date_last_action",
         "date_introduced", "sponsor_full_name", "sponsor_party", "sponsor_state", "num_cosponsors",
@@ -374,8 +394,8 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
     df = pd.read_parquet(cache_file, columns=[c for c in wanted if c in available])
     df = df.sort_values(["date_last_action", "bill_type", "bill_number"], ascending=[False, True, True]).reset_index(drop=True)
 
-    roster = fetch_roster() if roster is None else roster
-    committees = fetch_committees() if committees is None else committees
+    roster = fetch_roster(congress) if roster is None else roster
+    committees = fetch_committees(congress) if committees is None else committees
     if not roster:
         raise RuntimeError("member roster came back empty")
     committees_by_key = {(info["chamber"], committee_key(info["name"])): code for code, info in committees.items()}
@@ -385,7 +405,7 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
     df["id"] = [f"{c}-{t.lower()}-{n}" for c, t, n in zip(df["congress"], df["bill_type"], df["bill_number"])]
 
     data_through = text_of(df["date_last_action"].max())
-    world_since = (pd.Timestamp(data_through) - pd.Timedelta(days=WORLD_DAYS)).strftime("%Y-%m-%d")
+    world_since = "" if world_days is None else (pd.Timestamp(data_through) - pd.Timedelta(days=world_days)).strftime("%Y-%m-%d")
     event_since = (pd.Timestamp(data_through) - pd.Timedelta(days=EVENT_DAYS)).strftime("%Y-%m-%d")
 
     find_actor = make_actor_finder(members)
@@ -448,7 +468,7 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
         "schema": SCHEMA,
         "generated_at": pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%dT%H:%M:%SZ"),
         "data_through": data_through,
-        "congress": int(bills.CONGRESS),
+        "congress": congress,
         "window": {"world_since": world_since, "events_since": event_since},
         "counts": {
             "total": int(len(df)),
