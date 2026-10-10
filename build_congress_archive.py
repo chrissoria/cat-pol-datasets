@@ -285,10 +285,8 @@ def build_congress(congress, raw_dir, out_dir, with_committees=False):
     for member in roster:
         member["chamber"] = sat_in.get(member["id"], member["chamber"])
     roles = {"chairs": chairs_of(seats), "leaders": fetch_leaders(congress)}
-    world, search = snapshot.build(table, roster=roster, roles=roles, congress=congress, world_days=None)
+    world, search = snapshot.build(table, roster=roster, roles=roles, congress=congress, world_days=None, final=True)
     start, end = snapshot.congress_years(congress)
-    world["final"] = True
-    world["years"] = [start, end]
     world["summary_source"] = "crs"
 
     folder = out_dir / str(congress)

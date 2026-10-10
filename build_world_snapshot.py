@@ -361,6 +361,43 @@ def stage_of(status, last_action, kind=""):
     return 0
 
 
+# Why a bill is dead, as one character per bill in the search index and a `fate` on the map's bills.
+# "." is a bill that is alive or that succeeded. Two causes are events: a veto and a lost floor
+# vote. The rest depend on the calendar: in a finished Congress every other bill died where it
+# stood on the last day, and in the current one a bill with no action for a year is presumed dead
+# (in the 113th to 118th Congresses, 96 in 100 such bills never moved again).
+FATES = {
+    "v": "vetoed",
+    "f": "lost a floor vote",
+    "s": "no action in a year",
+    "c": "died in committee",
+    "w": "died waiting for a floor vote",
+    "o": "died in the other chamber",
+    "b": "passed both chambers in some form, never became law",
+}
+SILENT_DAYS = 365
+
+
+def fate_of(status, last_action, kind, last_date, final, silent_before):
+    """One key of FATES, or "." for a bill that is not dead."""
+    stage = stage_of(status, last_action, kind)
+    if kind == "vetoed" or status == "Vetoed":
+        return "v"
+    if stage == 5 or kind == "adopted":
+        return "."
+    if stage == 2:
+        return "f"
+    if final:
+        if kind in ("calendar", "floor"):
+            return "w"
+        if kind == "other_chamber":
+            return "o"
+        if kind in ("conference", "president") or stage == 4:
+            return "b"
+        return "c"
+    return "s" if last_date and last_date < silent_before else "."
+
+
 def read_pending(pending_file, known_ids):
     """Bills the dataset leaves out because their text is not published yet."""
     try:
@@ -377,11 +414,14 @@ def read_pending(pending_file, known_ids):
         return pd.DataFrame()
 
 
-def build(cache_file, roster=None, committees=None, roles=None, pending_file=None, congress=None, world_days=WORLD_DAYS):
+def build(cache_file, roster=None, committees=None, roles=None, pending_file=None, congress=None, world_days=WORLD_DAYS,
+          final=False):
     """Build the map file and the search index from a bills table.
 
-    `congress` names a finished Congress to build instead of the current one, and
-    `world_days=None` puts every bill on the map rather than the recently active ones.
+    `congress` names a finished Congress to build instead of the current one,
+    `world_days=None` puts every bill on the map rather than the recently active
+    ones, and `final` says the Congress has ended, so every bill that did not
+    succeed is dead.
     """
     congress = int(congress or bills.CONGRESS)
     wanted = [
@@ -408,6 +448,7 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
     data_through = text_of(df["date_last_action"].max())
     world_since = "" if world_days is None else (pd.Timestamp(data_through) - pd.Timedelta(days=world_days)).strftime("%Y-%m-%d")
     event_since = (pd.Timestamp(data_through) - pd.Timedelta(days=EVENT_DAYS)).strftime("%Y-%m-%d")
+    silent_before = (pd.Timestamp(data_through) - pd.Timedelta(days=SILENT_DAYS)).strftime("%Y-%m-%d")
 
     find_actor = make_actor_finder(members)
     roles = fetch_roles() if roles is None else roles
@@ -423,6 +464,8 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
         if loc["committee"]:
             used_committees[loc["committee"]] = used_committees.get(loc["committee"], 0) + 1
         summary = text_of(row.get("short_summary")).strip()
+        fate = fate_of(text_of(row.get("status")), text_of(row.get("last_action_text")), loc["kind"],
+                       text_of(row.get("date_last_action")), final, silent_before)
         world_bills.append({
             "id": row["id"],
             "type": row["bill_type"],
@@ -437,6 +480,7 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
             "introduced": text_of(row.get("date_introduced")),
             "summary": summary[:SUMMARY_CHARS] + ("…" if len(summary) > SUMMARY_CHARS else ""),
             "url": text_of(row.get("url")),
+            **({"fate": fate} if fate != "." else {}),
         })
         events.extend(bill_events(row["id"], row, loc, event_since, find_actor, roles))
     events.sort(key=lambda event: event["date"])
@@ -495,10 +539,17 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
     else:
         index_df = df
     world["counts"]["pending"] = int(len(pending))
+    if final:
+        world["final"] = True
+        world["years"] = list(congress_years(congress))
 
     def column(name):
         return index_df[name].fillna("").astype(str) if name in index_df else pd.Series("", index=index_df.index)
 
+    fates = "".join(fate_of(s, a, k, d, final, silent_before) for s, a, k, d in
+                    zip(column("status"), column("last_action_text"), column("location_kind"), column("date_last_action")))
+    world["counts"]["dead"] = {code: fates.count(code) for code in FATES if code in fates}
+    names = {member["id"]: f"{member['name']} ({member['party']}-{member['state']})" for member in members}
     sponsors = sorted({s for s in index_df["sponsor_id"] if s in known})
     sponsor_index = {member_id: i for i, member_id in enumerate(sponsors)}
     statuses = sorted(s for s in column("status").unique() if s)
@@ -508,6 +559,8 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
         "data_through": data_through,
         "pending": int(len(pending)),
         "sponsors": sponsors,
+        "sponsor_names": [names.get(s, "") for s in sponsors],
+        "fates": FATES,
         "statuses": statuses,
         "policy_areas": areas,
         "stages": list(STAGES),
@@ -522,6 +575,8 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
         "party": "".join(p[:1].upper() if p[:1].upper() in ("D", "R", "I") else "?" for p in column("sponsor_party")),
         "stage": "".join(str(stage_of(s, a, k)) for s, a, k in
                          zip(column("status"), column("last_action_text"), column("location_kind"))),
+        # One character per bill: why it is dead (a key of `fates`), or "." if it is not.
+        "fate": fates,
     }
     return world, search
 
