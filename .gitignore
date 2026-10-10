@@ -11,3 +11,5 @@ __pycache__/
 .DS_Store
 # Local copy of the Capitol World snapshot
 world/
+# Local copy of the committee tables
+committees/

@@ -967,6 +967,12 @@ def main():
             build_world_snapshot.main([])
         except Exception as e:
             log.warning(f"World snapshot not updated: {e}")
+        # The committee tables are their own dataset; refresh them in the same run. Never fatal.
+        try:
+            import build_committees
+            build_committees.main(["--max-minutes", "10"])
+        except Exception as e:
+            log.warning(f"Committee tables not updated: {e}")
 
     log.info(f"RESULT: federal-bills fetched={len(new_df)} total={len(combined)} pushed={pushed}")
     log.info("Done.")

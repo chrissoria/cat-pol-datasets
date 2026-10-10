@@ -45,6 +45,12 @@ writes `world/world.json` and `world/search.json.gz` to the same dataset
 repository for the Capitol World map (3 extra API calls, a few seconds). A
 failure there is logged as a WARNING and does not fail the run.
 
+The same run then refreshes the committee tables (`build_committees.py`): it
+publishes `chrissoria/federal-committees` and writes `world/committees.json`
+for the map. That step is capped at ten minutes and never fails the run. The
+cloud token needs write access to `chrissoria/federal-committees` as well; without
+it the tables are skipped with a logged error and only the map file is updated.
+
 ## 2. Guards
 
 The script stops with exit 1, saving and pushing nothing, when:

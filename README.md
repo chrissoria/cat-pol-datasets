@@ -14,6 +14,10 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   and [federal-votes](https://huggingface.co/datasets/chrissoria/federal-votes).
 - `docs/cloud_routine.md` describes the daily cloud run that keeps
   federal-bills-active current.
+- `build_committees.py` builds
+  [federal-committees](https://huggingface.co/datasets/chrissoria/federal-committees):
+  every committee and subcommittee, its members, and every hearing, markup and
+  business meeting held or scheduled. It runs at the end of the daily bills run.
 
 ```bash
 pip install -r requirements.txt
