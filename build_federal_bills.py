@@ -26,6 +26,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -234,6 +235,177 @@ def determine_status(actions):
     return "Introduced"
 
 
+# ── Bill location (where a bill physically sits in the process) ───────────────
+# `status` above is kept as published. `location_*` is a separate, stricter reading
+# of the action history, used by the Capitol World map (build_world_snapshot.py).
+
+LOCATION_KINDS = (
+    "hopper",         # introduced, not yet referred
+    "committee",      # referred to, or being worked on by, a committee
+    "referral_desk",  # referred, but the committee could not be identified
+    "calendar",       # placed on a chamber calendar
+    "floor",          # under consideration on the floor
+    "other_chamber",  # passed one chamber; received or waiting in the other
+    "conference",     # the chambers are resolving differences
+    "president",      # passed both chambers; at or on its way to the President
+    "law",            # signed or enacted
+    "vetoed",
+    "adopted",        # a simple or concurrent resolution that was agreed to
+)
+RECENT_ACTIONS_KEPT = 15
+_PASSED = re.compile(
+    r"passed/agreed to in (house|senate)|passed (house|senate)|on passage passed|"
+    r"agreed to in (house|senate)|resolution agreed to|considered, and agreed to|"
+    r"on agreeing to the resolution agreed to|on motion to suspend the rules and (pass|agree)[^.]*agreed to",
+    re.I,
+)
+_TRANSPARENT = re.compile(r"^message on (house|senate) action sent|motion to reconsider|^pursuant to|^sponsor introductory remarks", re.I)
+_COMMITTEE_NAME = re.compile(r"(?:Committee on|Subcommittee on) (?:the )?([A-Z][A-Za-z,'\- ]+?)(?:\.|,? and in addition| by | for a period|$)")
+
+
+def _action_chamber(action):
+    """Which chamber took an action: 'House', 'Senate' or ''."""
+    source = ((action.get("sourceSystem") or {}).get("name") or "").lower()
+    code = str(action.get("actionCode") or "")
+    if source.startswith("house") or code.startswith("H"):
+        return "House"
+    if source == "senate" or code.startswith("S"):
+        return "Senate"
+    text = action.get("text") or ""
+    in_senate, in_house = "Senate" in text, "House" in text
+    if in_senate != in_house:
+        return "Senate" if in_senate else "House"
+    return ""
+
+
+def _ordered_committee_codes(committees, text):
+    """Parent-committee codes for an action, primary first.
+
+    The API does not list the primary committee first, but the action text names
+    it first ("Referred to the Committee on Energy and Commerce, and in addition to ...").
+    """
+    low = text.lower()
+    ranked = []
+    for index, committee in enumerate(committees or []):
+        code = committee.get("systemCode") or ""
+        if not code:
+            continue
+        name = re.sub(r"\b(house|senate|committee|subcommittee|on|the)\b", " ", (committee.get("name") or "").lower())
+        name = re.sub(r"\s+", " ", name).strip()
+        position = low.find(name) if name else -1
+        ranked.append((position if position >= 0 else 10_000 + index, code[:4] + "00"))
+    return list(dict.fromkeys(code for _, code in sorted(ranked)))
+
+
+def compact_actions(actions, keep=None):
+    """Reduce API action items to the fields the map needs, newest first, without duplicates.
+
+    Congress.gov lists most actions twice, once from the chamber and once from the
+    Library of Congress, and lists a referral to several committees once per
+    committee with the same text. Copies are merged into one item.
+    """
+    seen, out, raw_committees = {}, [], []
+    for action in actions or []:
+        text = (action.get("text") or "").strip()
+        key = (action.get("actionDate") or "", re.sub(r"\W+", "", text.lower()))
+        chamber = _action_chamber(action)
+        if key in seen:
+            kept = out[seen[key]]
+            if not kept["chamber"] and chamber:
+                kept["chamber"] = chamber
+            raw_committees[seen[key]].extend(action.get("committees") or [])
+            continue
+        seen[key] = len(out)
+        raw_committees.append(list(action.get("committees") or []))
+        out.append({
+            "date": action.get("actionDate") or "",
+            "type": action.get("type") or "",
+            "code": str(action.get("actionCode") or ""),
+            "committees": [],
+            "chamber": chamber,
+            "text": text,
+        })
+    for item, committees in zip(out, raw_committees):
+        item["committees"] = _ordered_committee_codes(committees, item["text"])
+    return out[:keep] if keep else out
+
+
+def classify_location(actions, bill_type="", origin_chamber=""):
+    """Say where a bill sits, from its compact action list (newest first).
+
+    Returns {"kind", "chamber", "committee_code", "committee_name", "extra_referrals"}.
+    `kind` is one of LOCATION_KINDS, or "" when the list gives no answer.
+    """
+    bill_type = (bill_type or "").upper()
+    resolution_one_chamber = bill_type in ("HRES", "SRES")
+    resolution_both = bill_type in ("HCONRES", "SCONRES")
+    other = {"House": "Senate", "Senate": "House"}
+
+    def result(kind, chamber="", committees=(), name=""):
+        committees = list(dict.fromkeys(committees))
+        return {
+            "kind": kind,
+            "chamber": chamber,
+            "committee_code": committees[0] if committees else "",
+            "committee_name": name,
+            "extra_referrals": max(len(committees) - 1, 0),
+        }
+
+    for index, action in enumerate(actions or []):
+        text = action.get("text") or ""
+        low = text.lower()
+        kind = action.get("type") or ""
+        chamber = action.get("chamber") or ""
+        if _TRANSPARENT.search(text):
+            continue
+        if "became public law" in low or "signed by president" in low or "became private law" in low:
+            return result("law")
+        if kind == "Veto" or "vetoed by president" in low:
+            return result("vetoed")
+        if "presented to president" in low:
+            return result("president")
+        if kind == "ResolvingDifferences" or "conference report" in low or "conferees" in low or "resolving differences" in low:
+            return result("conference", chamber)
+        if _PASSED.search(text):
+            if resolution_one_chamber:
+                return result("adopted", chamber)
+            if not chamber or not origin_chamber or chamber == origin_chamber:
+                return result("other_chamber", other.get(chamber or origin_chamber, ""))
+            if resolution_both:
+                return result("adopted", chamber)
+            if "with an amendment" in low or "with amendments" in low or "as amended" in low:
+                return result("conference", origin_chamber)
+            return result("president")
+        if kind == "Calendars" or ("placed on" in low and "calendar" in low):
+            return result("calendar", chamber)
+        if kind == "Discharge":
+            return result("floor", chamber)
+        if kind == "Committee" or "referred to" in low or "rereferred to" in low:
+            committees = action.get("committees") or []
+            if not committees:
+                # A subcommittee referral often names no committee code; the bill is
+                # still with the committee that an earlier action in this chamber named.
+                for earlier in actions[index + 1:]:
+                    same_chamber = not chamber or not earlier.get("chamber") or earlier["chamber"] == chamber
+                    if earlier.get("committees") and same_chamber:
+                        committees = earlier["committees"]
+                        break
+            found = _COMMITTEE_NAME.search(text)
+            name = found.group(1).strip() if found else ""
+            if not chamber and committees:
+                chamber = "House" if committees[0].startswith("h") else "Senate"
+            if committees or name:
+                return result("committee", chamber, committees, name)
+            return result("referral_desk", chamber)
+        if low.startswith("received in the ") or low.startswith("held at the desk"):
+            return result("other_chamber", chamber)
+        if kind == "Floor":
+            return result("floor", chamber)
+        if low.startswith("introduced in") or low.startswith("submitted in"):
+            return result("hopper", chamber or origin_chamber)
+    return result("")
+
+
 def build_bill_row(bill_summary, detail, text_content, text_version, subjects, actions):
     """Build a row dict mirroring the federal_laws schema + status columns."""
     sponsor = detail.get("sponsors", [{}])[0] if detail.get("sponsors") else {}
@@ -242,6 +414,9 @@ def build_bill_row(bill_summary, detail, text_content, text_version, subjects, a
 
     bill_type = bill_summary.get("type", "HR").lower()
     bill_number = bill_summary.get("number", "")
+    origin_chamber = detail.get("originChamber", bill_summary.get("originChamber", ""))
+    history = compact_actions(actions)
+    location = classify_location(history, bill_type, origin_chamber)
 
     return {
         # Dates
@@ -286,6 +461,13 @@ def build_bill_row(bill_summary, detail, text_content, text_version, subjects, a
         "package_id": "",
         "pages": "",
         "source": "federal_bills_active",
+        # Map fields (see classify_location)
+        "sponsor_bioguide_id": sponsor.get("bioguideId", ""),
+        "recent_actions": json.dumps(history[:RECENT_ACTIONS_KEPT], ensure_ascii=False),
+        "location_kind": location["kind"],
+        "location_chamber": location["chamber"],
+        "location_committee_code": location["committee_code"],
+        "location_committee_name": location["committee_name"],
     }
 
 
@@ -756,6 +938,14 @@ def main():
             sys.exit(1)
     else:
         log.info("Dry run — skipping HuggingFace push")
+
+    if pushed:
+        # The map snapshot is a by-product; it must never fail the dataset run.
+        try:
+            import build_world_snapshot
+            build_world_snapshot.main([])
+        except Exception as e:
+            log.warning(f"World snapshot not updated: {e}")
 
     log.info(f"RESULT: federal-bills fetched={len(new_df)} total={len(combined)} pushed={pushed}")
     log.info("Done.")

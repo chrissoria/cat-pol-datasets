@@ -40,6 +40,11 @@ Bills with no text yet are fetched and dropped, so they are retried on every
 run, last in the queue. A bill updated today or yesterday is fetched again even
 if its date matches, because Congress.gov lists a date, not a time.
 
+After a successful push the script also runs `build_world_snapshot.py`, which
+writes `world/world.json` and `world/search.json.gz` to the same dataset
+repository for the Capitol World map (3 extra API calls, a few seconds). A
+failure there is logged as a WARNING and does not fail the run.
+
 ## 2. Guards
 
 The script stops with exit 1, saving and pushing nothing, when:

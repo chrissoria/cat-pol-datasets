@@ -103,6 +103,21 @@ These columns are derived from `federal-votes` by selecting one best-available r
 | `doc_type` | string | Always "bill" in this dataset. |
 | `source` | string | Always "federal_bills_active". |
 
+### Location (for the Capitol World map)
+
+Added October 2026. Filled for a bill the next time it is fetched, so older rows are empty until they change.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `sponsor_bioguide_id` | string | The sponsor's Bioguide ID (e.g., "C001053"). |
+| `recent_actions` | string | JSON list of the bill's 15 most recent actions, newest first: `date`, `type`, `code`, `committees` (parent committee codes, primary first), `chamber`, `text`. Duplicate entries from the Library of Congress are removed. |
+| `location_kind` | string | Where the bill sits, read from its action history: `hopper`, `committee`, `referral_desk`, `calendar`, `floor`, `other_chamber`, `conference`, `president`, `law`, `vetoed`, `adopted`. Stricter than `status`, which is unchanged. |
+| `location_chamber` | string | `House` or `Senate` when the location belongs to one chamber. |
+| `location_committee_code` | string | Congress.gov system code of the committee holding the bill (e.g., "hsif00"). Subcommittees map to their parent. |
+| `location_committee_name` | string | Committee name as written in the action text. |
+
+The repository also holds `world/world.json` and `world/search.json.gz`, the snapshot read by the Capitol World map (`build_world_snapshot.py`). They are not part of the dataset table.
+
 ---
 
 ## federal-votes — Codebook
