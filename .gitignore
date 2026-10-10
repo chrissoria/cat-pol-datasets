@@ -9,3 +9,5 @@ logs/
 __pycache__/
 *.pyc
 .DS_Store
+# Local copy of the Capitol World snapshot
+world/

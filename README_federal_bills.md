@@ -116,7 +116,7 @@ Added October 2026. Filled for a bill the next time it is fetched, so older rows
 | `location_committee_code` | string | Congress.gov system code of the committee holding the bill (e.g., "hsif00"). Subcommittees map to their parent. |
 | `location_committee_name` | string | Committee name as written in the action text. |
 
-The repository also holds `world/world.json` and `world/search.json.gz`, the snapshot read by the Capitol World map (`build_world_snapshot.py`). They are not part of the dataset table.
+The repository also holds `world/world.json` and `world/search.json.gz`, the snapshot read by the Capitol World map (`build_world_snapshot.py`). They are not part of the dataset table. The search file lists every bill of the Congress, including those too new to have published text (which the dataset table leaves out), with its introduction date, sponsor party and how far it has got; the map's Stats tab is counted from it.
 
 ---
 

@@ -39,6 +39,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 load_dotenv(PROJECT_ROOT / ".env", override=True)
 CACHE_FILE = SCRIPT_DIR / ".federal_bills_cache.parquet"
+# Bills too new to have published text. They stay out of the dataset, but the
+# Capitol World snapshot counts and lists them (build_world_snapshot.py).
+PENDING_FILE = SCRIPT_DIR / ".federal_bills_pending.parquet"
+PENDING_COLUMNS = [
+    "bill_type", "bill_number", "congress", "title", "status", "last_action_text", "date_last_action",
+    "date_introduced", "sponsor_full_name", "sponsor_party", "sponsor_state", "sponsor_bioguide_id",
+    "policy_area", "location_kind",
+]
 VOTES_CACHE = SCRIPT_DIR / ".federal_votes_cache.parquet"
 CHECKPOINT_DIR = SCRIPT_DIR / "checkpoints" / "federal_bills"
 LOG_DIR = SCRIPT_DIR / "logs"
@@ -571,6 +579,17 @@ def save_cache(df):
     df.to_parquet(CACHE_FILE, index=False)
 
 
+def save_pending(rows, pending_file=None):
+    """Remember the bills left out for having no text yet. Never fatal."""
+    try:
+        keep = rows[[c for c in PENDING_COLUMNS if c in rows.columns]].copy()
+        for column in keep.columns:
+            keep[column] = keep[column].astype("string")
+        keep.to_parquet(pending_file or PENDING_FILE, index=False)
+    except Exception as e:
+        log.warning(f"Could not save the list of bills without text: {e}")
+
+
 def order_dataset_columns(df):
     """Move the highest-value fields to the front while preserving the rest."""
     if "summary_threads" in df.columns and "short_summary" not in df.columns:
@@ -896,7 +915,9 @@ def main():
         combined = combined.drop(columns=["short_title"])
     if "text" in combined.columns:
         before = len(combined)
-        combined = combined[combined["text"].fillna("").astype(str).str.strip() != ""].copy()
+        has_text = combined["text"].fillna("").astype(str).str.strip() != ""
+        save_pending(combined[~has_text])
+        combined = combined[has_text].copy()
         dropped = before - len(combined)
         if dropped:
             log.info(f"Dropped {dropped} bills with empty text")

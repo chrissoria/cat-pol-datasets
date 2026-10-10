@@ -326,7 +326,43 @@ def bill_events(bill_id, row, final, since, find_actor=None, roles=None):
     return events
 
 
-def build(cache_file, roster=None, committees=None, roles=None):
+_FAILED_VOTE = re.compile(r"\bfailed\b|not invoked", re.I)
+# How far a bill has got, as one digit per bill in the search index.
+STAGES = ("in_committee", "out_of_committee", "failed_floor_vote", "passed_one_chamber", "passed_both_chambers", "law")
+
+
+def stage_of(status, last_action, kind=""):
+    """Index into STAGES. `kind` is the stricter location reading, where a bill has one."""
+    if status == "Signed into Law" or kind == "law":
+        return 5
+    if status in ("Sent to President", "Vetoed", "Passed Both Chambers") or kind in ("president", "vetoed"):
+        return 4
+    if status in ("Passed House", "Passed Senate") or kind in ("other_chamber", "conference", "adopted"):
+        return 3
+    if _FAILED_VOTE.search(last_action or ""):
+        return 2
+    if status in ("Reported from Committee", "Calendared", "Senate Floor") or kind in ("calendar", "floor"):
+        return 1
+    return 0
+
+
+def read_pending(pending_file, known_ids):
+    """Bills the dataset leaves out because their text is not published yet."""
+    try:
+        if not pending_file or not Path(pending_file).exists():
+            return pd.DataFrame()
+        pending = pd.read_parquet(pending_file)
+        if pending.empty:
+            return pending
+        pending["id"] = [f"{c}-{str(t).lower()}-{n}" for c, t, n in
+                         zip(pending["congress"], pending["bill_type"], pending["bill_number"])]
+        return pending[~pending["id"].isin(known_ids)].drop_duplicates("id").reset_index(drop=True)
+    except Exception as e:
+        log.warning(f"Could not read the bills without text: {e}")
+        return pd.DataFrame()
+
+
+def build(cache_file, roster=None, committees=None, roles=None, pending_file=None):
     wanted = [
         "bill_type", "bill_number", "congress", "title", "status", "last_action_text", "date_last_action",
         "date_introduced", "sponsor_full_name", "sponsor_party", "sponsor_state", "num_cosponsors",
@@ -429,22 +465,42 @@ def build(cache_file, roster=None, committees=None, roles=None):
         "events": events,
     }
 
-    sponsors = sorted({member["id"] for member in members if member["n_total"]})
+    # The search index covers every bill, including the ones too new to have text.
+    pending = read_pending(pending_file, set(df["id"]))
+    if len(pending):
+        bioguide = pending["sponsor_bioguide_id"] if "sponsor_bioguide_id" in pending else pd.Series("", index=pending.index)
+        pending["sponsor_id"] = [s if s in known else "" for s in bioguide.fillna("")]
+        index_df = pd.concat([df, pending], ignore_index=True)
+    else:
+        index_df = df
+    world["counts"]["pending"] = int(len(pending))
+
+    def column(name):
+        return index_df[name].fillna("").astype(str) if name in index_df else pd.Series("", index=index_df.index)
+
+    sponsors = sorted({s for s in index_df["sponsor_id"] if s in known})
     sponsor_index = {member_id: i for i, member_id in enumerate(sponsors)}
-    statuses = sorted(df["status"].dropna().unique())
-    areas = sorted(a for a in df["policy_area"].fillna("").unique() if a)
+    statuses = sorted(s for s in column("status").unique() if s)
+    areas = sorted(a for a in column("policy_area").unique() if a)
     search = {
         "schema": SCHEMA,
         "data_through": data_through,
+        "pending": int(len(pending)),
         "sponsors": sponsors,
         "statuses": statuses,
         "policy_areas": areas,
-        "id": df["id"].tolist(),
-        "title": [text_of(t)[:TITLE_CHARS] for t in df["title"]],
-        "sponsor": [sponsor_index.get(s, -1) for s in df["sponsor_id"]],
-        "status": [statuses.index(s) if s in statuses else -1 for s in df["status"]],
-        "policy_area": [areas.index(a) if a in areas else -1 for a in df["policy_area"].fillna("")],
-        "date": df["date_last_action"].fillna("").tolist(),
+        "stages": list(STAGES),
+        "id": index_df["id"].tolist(),
+        "title": [text_of(t)[:TITLE_CHARS] for t in index_df["title"]],
+        "sponsor": [sponsor_index.get(s, -1) for s in index_df["sponsor_id"]],
+        "status": [statuses.index(s) if s in statuses else -1 for s in column("status")],
+        "policy_area": [areas.index(a) if a in areas else -1 for a in column("policy_area")],
+        "date": column("date_last_action").tolist(),
+        "introduced": [d[:10] for d in column("date_introduced")],
+        # One character per bill: the sponsor's party, and how far the bill has got.
+        "party": "".join(p[:1].upper() if p[:1].upper() in ("D", "R", "I") else "?" for p in column("sponsor_party")),
+        "stage": "".join(str(stage_of(s, a, k)) for s, a, k in
+                         zip(column("status"), column("last_action_text"), column("location_kind"))),
     }
     return world, search
 
@@ -453,10 +509,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Build the Capitol World snapshot")
     parser.add_argument("--cache", default=str(bills.CACHE_FILE), help="bills parquet to read")
     parser.add_argument("--out", default=str(bills.SCRIPT_DIR / "world"), help="directory to write into")
+    parser.add_argument("--pending", default=str(bills.PENDING_FILE), help="bills left out for having no text yet")
     parser.add_argument("--no-upload", action="store_true", help="write the files but do not upload them")
     args = parser.parse_args(argv)
 
-    world, search = build(args.cache)
+    world, search = build(args.cache, pending_file=args.pending)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     world_file, search_file = out / "world.json", out / "search.json.gz"
