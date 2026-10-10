@@ -90,6 +90,11 @@ def fetch_members():
     except Exception as e:
         log.warning(f"Committee membership unavailable: {e}")
         return pd.DataFrame()
+    return seats_table(membership)
+
+
+def seats_table(membership):
+    """One row per seat from a congress-legislators membership file ({committee id: [seat]})."""
     rows = []
     for thomas_id, seats in membership.items():
         for seat in seats:
@@ -159,12 +164,16 @@ def meeting_row(detail, chamber, congress=bills.CONGRESS):
         "videos": as_json([v.get("url", "") for v in detail.get("videos") or [] if v.get("url")]),
         "has_transcript": bool(detail.get("hearingTranscript")),
         "update_date": detail.get("updateDate", ""),
-        "url": f"https://www.congress.gov/event/{congress}th-congress/{chamber}-event/{event_id}",
+        "url": f"https://www.congress.gov/event/{congress}th-congress/{chamber.lower()}-event/{event_id}",
     }
 
 
-def fetch_meetings(existing, max_minutes=None, congress=bills.CONGRESS):
-    """Fetch new and changed meetings; keep the rest of `existing` as it is."""
+def fetch_meetings(existing, max_minutes=None, congress=bills.CONGRESS, pause=0):
+    """Fetch new and changed meetings; keep the rest of `existing` as it is.
+
+    `pause` is a wait in seconds between meetings, for a long backfill that must
+    leave room under the API's hourly limit.
+    """
     known = {} if existing.empty else dict(zip(existing["event_id"], existing["update_date"]))
     todo = []
     listed = set()
@@ -180,6 +189,8 @@ def fetch_meetings(existing, max_minutes=None, congress=bills.CONGRESS):
         if deadline and time.time() > deadline:
             log.warning(f"Time limit reached with {len(todo) - index} meetings left for the next run")
             break
+        if pause:
+            time.sleep(pause)
         data = bills.api_get(f"/committee-meeting/{congress}/{chamber}/{event_id}")
         detail = (data or {}).get("committeeMeeting")
         if not detail:

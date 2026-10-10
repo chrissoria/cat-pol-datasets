@@ -16,10 +16,17 @@ For each Congress this writes:
 and uploads the last two to world/archive/<congress>/ next to the live map
 files, then refreshes world/congresses.json, the list the app's picker reads.
 
+With --committees it also writes archive/<congress>/committees.json.gz: each
+committee's roster late in that Congress (from the history of the
+congress-legislators project) and its meetings (from the Congress.gov API, one
+call per meeting, so this part takes an hour or more per Congress). It can be
+stopped and started again; meetings already fetched are kept.
+
 Usage:
     python build_congress_archive.py 118            # one Congress
     python build_congress_archive.py 113-118        # a range
     python build_congress_archive.py 118 --no-upload
+    python build_congress_archive.py 113-118 --committees   # rosters and meetings as well
 """
 
 import argparse
@@ -37,6 +44,7 @@ from xml.etree import ElementTree
 import pandas as pd
 import requests
 
+import build_committees as committees
 import build_federal_bills as bills
 import build_world_snapshot as snapshot
 
@@ -52,6 +60,9 @@ URL_SLUG = {
     "hconres": "house-concurrent-resolution", "sconres": "senate-concurrent-resolution",
 }
 LEGISLATORS = ("legislators-current.json", "legislators-historical.json")
+MEMBERSHIP_COMMITS = "https://api.github.com/repos/unitedstates/congress-legislators/commits"
+MEMBERSHIP_FILE = "https://raw.githubusercontent.com/unitedstates/congress-legislators/{sha}/committee-membership-current.yaml"
+MEETING_PAUSE = 0.8  # seconds between meetings: about 4,000 calls an hour, under the API's 5,000
 
 
 def ordinal(number):
@@ -199,26 +210,81 @@ def fetch_leaders(congress):
     return {slot: who for slot, (_, who) in found.items()}
 
 
+def fetch_past_members(congress):
+    """Committee seats late in a finished Congress, from the history of congress-legislators.
+
+    The project keeps only the current rosters, so this reads the file as it stood
+    on December 1 of the Congress's second year. Empty when it cannot be read.
+    """
+    _, end = snapshot.congress_years(congress)
+    try:
+        import yaml
+        found = requests.get(MEMBERSHIP_COMMITS, timeout=30, params={
+            "path": "committee-membership-current.yaml", "until": f"{end - 1}-12-01T00:00:00Z", "per_page": 1}).json()
+        text = requests.get(MEMBERSHIP_FILE.format(sha=found[0]["sha"]), timeout=60).text
+        seats = committees.seats_table(yaml.safe_load(text))
+        log.info(f"Congress {congress}: {len(seats)} committee seats as of {found[0]['commit']['committer']['date'][:10]}")
+        return seats
+    except Exception as e:
+        log.warning(f"Committee rosters of Congress {congress} not available: {e}")
+        return pd.DataFrame()
+
+
+def chairs_of(seats):
+    """{full committee code: bioguide id of its chair}."""
+    if seats.empty:
+        return {}
+    chairs = seats[seats["title"].fillna("").str.match(r"Chair(man|woman)?$") & seats["committee_code"].str.endswith("00")]
+    return dict(zip(chairs["committee_code"], chairs["bioguide_id"]))
+
+
+def build_committee_file(congress, seats, out_dir):
+    """Rosters and meetings of a finished Congress, in the shape of world/committees.json."""
+    listing = committees.fetch_committee_list(congress)
+    if listing.empty:
+        raise RuntimeError(f"the committee list of Congress {congress} came back empty")
+    meetings_file = out_dir / f"meetings_{congress}.parquet"
+    meetings = pd.read_parquet(meetings_file) if meetings_file.exists() else pd.DataFrame()
+    while True:  # in ten-minute stretches, saving after each, so a stop loses little
+        meetings, fetched = committees.fetch_meetings(meetings, max_minutes=10, congress=congress, pause=MEETING_PAUSE)
+        if not meetings.empty:
+            meetings.to_parquet(meetings_file, index=False)
+        if not fetched:
+            break
+    content = committees.app_snapshot(listing, seats, meetings)
+    path = out_dir / str(congress) / "committees.json.gz"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        json.dump(content, handle, ensure_ascii=False, separators=(",", ":"))
+    log.info(f"Congress {congress}: {len(meetings)} committee meetings, {len(seats)} seats; "
+             f"{path.name} {path.stat().st_size // 1024} KB")
+    return path
+
+
 def sponsor_chambers(df):
     """{bioguide id: chamber} from the bills each member sponsored, which cannot be out of date."""
     chamber = df["bill_type"].str.startswith("S").map({True: "Senate", False: "House"})
     return dict(zip(df["sponsor_bioguide_id"], chamber))
 
 
-def build_congress(congress, raw_dir, out_dir):
-    """Write the table and the two map files of one Congress. Returns the paths and a summary."""
-    df = build_table(congress, raw_dir)
-    if df.empty:
-        raise RuntimeError(f"no bills found for Congress {congress}")
+def build_congress(congress, raw_dir, out_dir, with_committees=False):
+    """Write the table and the map files of one Congress. Returns the paths and a summary."""
     out_dir.mkdir(parents=True, exist_ok=True)
     table = out_dir / f"bills_{congress}.parquet"
-    df.to_parquet(table, index=False)
+    if table.exists():
+        df = pd.read_parquet(table)  # a finished Congress does not change; delete the table to rebuild it
+    else:
+        df = build_table(congress, raw_dir)
+        if df.empty:
+            raise RuntimeError(f"no bills found for Congress {congress}")
+        df.to_parquet(table, index=False)
+    seats = fetch_past_members(congress)
 
     roster = snapshot.fetch_roster(congress)
     sat_in = sponsor_chambers(df)
     for member in roster:
         member["chamber"] = sat_in.get(member["id"], member["chamber"])
-    roles = {"chairs": {}, "leaders": fetch_leaders(congress)}
+    roles = {"chairs": chairs_of(seats), "leaders": fetch_leaders(congress)}
     world, search = snapshot.build(table, roster=roster, roles=roles, congress=congress, world_days=None)
     start, end = snapshot.congress_years(congress)
     world["final"] = True
@@ -242,7 +308,13 @@ def build_congress(congress, raw_dir, out_dir):
     sizes = ", ".join(f"{name} {(folder / name).stat().st_size // 1024} KB" for name in files)
     log.info(f"Congress {congress}: {counts['total']} bills, {entry['laws']} laws, {len(world['members'])} members, "
              f"{counts['events']} events, {counts['guessed_locations']} guessed locations; {sizes}")
-    return [folder / name for name in files], entry
+    paths = [folder / name for name in files]
+    if with_committees:
+        try:
+            paths.append(build_committee_file(congress, seats, out_dir))
+        except Exception as e:  # the bills are still worth publishing
+            log.warning(f"Congress {congress}: committee file not built: {e}")
+    return paths, entry
 
 
 def upload(congress, paths, entry):
@@ -278,6 +350,7 @@ def main(argv=None):
     parser.add_argument("--raw", default=str(ARCHIVE_DIR / "raw"), help="where the bulk zips are kept")
     parser.add_argument("--out", default=str(ARCHIVE_DIR), help="directory to write into")
     parser.add_argument("--no-upload", action="store_true", help="write the files but do not upload them")
+    parser.add_argument("--committees", action="store_true", help="also build each committee's roster and meetings (slow)")
     args = parser.parse_args(argv)
 
     wanted = parse_range(args.congress)
@@ -288,7 +361,7 @@ def main(argv=None):
     failed = 0
     for congress in wanted:
         try:
-            paths, entry = build_congress(congress, Path(args.raw), Path(args.out))
+            paths, entry = build_congress(congress, Path(args.raw), Path(args.out), args.committees)
             if not args.no_upload:
                 upload(congress, paths, entry)
         except Exception as e:

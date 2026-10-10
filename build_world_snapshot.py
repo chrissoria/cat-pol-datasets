@@ -38,6 +38,7 @@ WORLD_DAYS = 30
 EVENT_DAYS = 7
 SUMMARY_CHARS = 320
 TITLE_CHARS = 160
+ACTION_CHARS = 1500  # a referral to many committees runs long; the app shows it in a scrolling box
 
 STATES = {
     "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR", "California": "CA", "Colorado": "CO",
@@ -432,7 +433,7 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
             "policy_area": text_of(row.get("policy_area")),
             "status": text_of(row.get("status")),
             "loc": loc,
-            "last_action": {"date": text_of(row.get("date_last_action")), "text": text_of(row.get("last_action_text"))[:200]},
+            "last_action": {"date": text_of(row.get("date_last_action")), "text": text_of(row.get("last_action_text"))[:ACTION_CHARS]},
             "introduced": text_of(row.get("date_introduced")),
             "summary": summary[:SUMMARY_CHARS] + ("…" if len(summary) > SUMMARY_CHARS else ""),
             "url": text_of(row.get("url")),
