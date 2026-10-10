@@ -292,11 +292,18 @@ def app_snapshot(committees, members, meetings, recent=20):
         roster = members[members["committee_code"] == code] if not members.empty else pd.DataFrame()
         held = sorted(by_parent.get(code, []), key=lambda pair: pair[0]["date"], reverse=True)
         upcoming = [pair for pair in held if pair[0]["date"] >= soon and pair[0]["status"] not in ("Canceled", "Postponed")]
-        past = [pair for pair in held if pair[0]["date"] < soon and pair[0]["status"] not in ("Canceled", "Postponed")][:recent]
+        past = [pair for pair in held if pair[0]["date"] < soon and pair[0]["status"] not in ("Canceled", "Postponed")]
+        detailed = len(upcoming) + recent
         listed = []
-        for row, codes in upcoming[::-1] + past:
+        for position, (row, codes) in enumerate(upcoming[::-1] + past):
             related = json.loads(row["bills"])
             sub = next((c for c in codes if c != code and c[:4] == code[:4]), "")
+            if position >= detailed:
+                # Older meetings in brief, for the wall calendar in the committee's room. The page address
+                # is left out; it follows from the chamber and the id.
+                listed.append({"id": row["event_id"], "date": row["date"], "type": row["meeting_type"], "title": row["title"][:110],
+                               "n_bills": len(related), "n_witnesses": len(json.loads(row["witnesses"])), "sub": sub, "brief": True})
+                continue
             listed.append({
                 "id": row["event_id"],
                 "date": row["date"],
