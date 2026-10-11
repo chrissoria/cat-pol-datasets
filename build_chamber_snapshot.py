@@ -17,7 +17,8 @@ parallel:
               tally, and how each member voted, as one letter per member in
               the order of `members` (see VOTE_LETTERS)
 
-    python build_chamber_snapshot.py            # San Diego County, published
+    python build_chamber_snapshot.py                      # San Diego County, published
+    python build_chamber_snapshot.py --body sd-council    # the San Diego City Council
     python build_chamber_snapshot.py --tables sdcounty --no-upload
 """
 
@@ -36,10 +37,14 @@ import build_federal_bills as bills
 
 log = logging.getLogger(__name__)
 
-HF_REPO = "chrissoria/sd-county-ordinances"
-TABLES_DIR = bills.SCRIPT_DIR / "sdcounty"
 FILE = "world/chamber.json.gz"
-TABLES = ("items", "meetings", "agenda_items", "votes", "supervisors")
+TABLES = ("items", "meetings", "agenda_items", "votes")
+# The bodies that have a file: where each one's tables are published and kept here, and what its table of members is called.
+BODIES = {
+    "sd-county": {"repo": "chrissoria/sd-county-ordinances", "folder": "sdcounty", "members": "supervisors"},
+    "sd-council": {"repo": "chrissoria/san-diego-council", "folder": "sdcouncil", "members": "council"},
+}
+PLAIN_ROLES = ("Member", "Councilmember", "Supervisor")  # a role that says no more than that the person sits on the body
 
 # One letter for each way a member's vote is recorded; "-" where the record has none for them.
 VOTE_LETTERS = {"AYE": "A", "NO": "N", "ABSENT": "X", "NOT PRESENT": "X", "RECUSED": "R", "ABSTAIN": "S", "NON-VOTING": "V"}
@@ -58,27 +63,37 @@ def listed(values):
     return names, [place[value] for value in values]
 
 
-def members_of(supervisors):
-    people = supervisors.sort_values(["serving", "district", "start"], ascending=[False, True, True])
-    return [{
-        "id": slug(row["name"]),
-        "name": row["name"],
-        "seat": None if pd.isna(row["district"]) else int(row["district"]),
-        "role": "" if row["role"] == "Member" else row["role"],
-        "start": row["start"] or "",
-        "end": row["end"] or "",
-        "serving": bool(row["serving"]),
-        "first_vote": row["first_vote"] or "",
-        "last_vote": row["last_vote"] or "",
-        "votes": int(row["votes"]),
-    } for row in people.to_dict("records")]
+def members_of(table):
+    """One entry a person. Someone who has held two seats is given the later one, and the whole of their time."""
+    people = []
+    for name, seats in table.groupby("name", sort=False):
+        seats = seats.sort_values(["serving", "start"])
+        last = seats.iloc[-1]
+        serving = bool(seats["serving"].any())
+        ends = [end for end in seats["end"].fillna("") if end]
+        firsts = [day for day in seats["first_vote"].fillna("") if day]
+        lasts = [day for day in seats["last_vote"].fillna("") if day]
+        people.append({
+            "id": slug(name),
+            "name": name,
+            "seat": None if pd.isna(last["district"]) else int(last["district"]),
+            "role": "" if last["role"] in PLAIN_ROLES or not serving and len(seats) > 1 else last["role"],
+            "start": min(seats["start"].fillna("")) or "",
+            "end": (last["end"] or "") if serving else (max(ends) if ends else ""),
+            "serving": serving,
+            "first_vote": min(firsts) if firsts else "",
+            "last_vote": max(lasts) if lasts else "",
+            "votes": int(seats["votes"].max()),
+        })
+    return sorted(people, key=lambda person: (not person["serving"], person["seat"] or 0, person["start"]))
 
 
 def votes_by_item(votes, members):
     """For each agenda entry, one letter per member."""
     seat = {member["name"]: index for index, member in enumerate(members)}
     cast = {}
-    for item_id, name, vote in zip(votes["item_id"], votes["supervisor"], votes["vote"]):
+    names = votes["supervisor"] if "supervisor" in votes.columns else votes["member"]
+    for item_id, name, vote in zip(votes["item_id"], names, votes["vote"]):
         if name not in seat:
             continue
         letters = cast.setdefault(item_id, ["-"] * len(members))
@@ -89,7 +104,7 @@ def votes_by_item(votes, members):
 def build(tables, today=None):
     today = today or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     items, meetings, agenda, votes = (tables[name].fillna("") for name in TABLES[:4])
-    members = members_of(tables["supervisors"])
+    members = members_of(tables["members"])
     person = {member["name"]: index for index, member in enumerate(members)}
 
     items = items.sort_values(["date", "matter_id"], ascending=[False, False]).reset_index(drop=True)
@@ -135,7 +150,7 @@ def build(tables, today=None):
             "mover": [person.get(name, -1) for name in items["mover"]],
             "seconder": [person.get(name, -1) for name in items["seconder"]],
             "times": [int(n) for n in items["times_on_agenda"]],
-            "has_text": [1 if text else 0 for text in items["text"]],
+            "has_text": [1 if text else 0 for text in items["text"]] if "text" in items.columns else [0] * len(items),
             "url": items["url"].tolist(),
         },
         "meetings": {
@@ -162,13 +177,14 @@ def build(tables, today=None):
     }
 
 
-def read_tables(folder=None):
-    """The tables as last written here, or as published."""
+def read_tables(body, folder=None):
+    """A body's tables as last written here, or as published. Its table of members is given the one name, "members"."""
+    files = {**{name: name for name in TABLES}, "members": body["members"]}
     if folder:
-        return {name: pd.read_parquet(Path(folder) / f"{name}.parquet") for name in TABLES}
+        return {name: pd.read_parquet(Path(folder) / f"{file}.parquet") for name, file in files.items()}
     from huggingface_hub import hf_hub_download
-    return {name: pd.read_parquet(hf_hub_download(HF_REPO, f"data/{name}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
-            for name in TABLES}
+    return {name: pd.read_parquet(hf_hub_download(body["repo"], f"data/{file}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
+            for name, file in files.items()}
 
 
 def write(snapshot, out_dir):
@@ -179,31 +195,33 @@ def write(snapshot, out_dir):
     return path
 
 
-def upload(path):
-    problem = bills.hf_write_problem(HF_REPO)
+def upload(path, repo):
+    problem = bills.hf_write_problem(repo)
     if problem:
         log.error(f"Chamber file not uploaded: {problem}")
         return False
     from huggingface_hub import HfApi
-    HfApi(token=bills.HF_TOKEN).upload_file(path_or_fileobj=str(path), path_in_repo=FILE, repo_id=HF_REPO, repo_type="dataset",
+    HfApi(token=bills.HF_TOKEN).upload_file(path_or_fileobj=str(path), path_in_repo=FILE, repo_id=repo, repo_type="dataset",
                                             commit_message="Update the file Capitol World reads")
     return True
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Write the file Capitol World reads for a local body")
+    parser.add_argument("--body", choices=sorted(BODIES), default="sd-county", help="whose file to write")
     parser.add_argument("--tables", help="directory holding the tables (default: read them as published)")
-    parser.add_argument("--out", default=str(TABLES_DIR), help="directory to write world/chamber.json.gz under")
+    parser.add_argument("--out", help="directory to write world/chamber.json.gz under (default: the body's own)")
     parser.add_argument("--no-upload", action="store_true", help="write the file but do not publish it")
     args = parser.parse_args(argv)
+    body = BODIES[args.body]
     try:
-        snapshot = build(read_tables(args.tables))
+        snapshot = build(read_tables(body, args.tables))
     except Exception as e:
         log.error(f"Chamber file not built: {type(e).__name__}: {e}")
         return 1
-    path = write(snapshot, args.out)
-    pushed = False if args.no_upload else upload(path)
-    log.info(f"RESULT: chamber-file members={len(snapshot['members'])} items={len(snapshot['items']['id'])} "
+    path = write(snapshot, args.out or bills.SCRIPT_DIR / body["folder"])
+    pushed = False if args.no_upload else upload(path, body["repo"])
+    log.info(f"RESULT: chamber-file body={args.body} members={len(snapshot['members'])} items={len(snapshot['items']['id'])} "
              f"meetings={len(snapshot['meetings']['id'])} agenda={len(snapshot['agenda']['item'])} "
              f"through={snapshot['data_through']} kilobytes={path.stat().st_size // 1024} pushed={pushed}")
     return 0 if args.no_upload or pushed else 1

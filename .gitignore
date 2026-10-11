@@ -28,3 +28,7 @@ sdcounty/
 summaries/
 # Local readings of the City of San Diego listing and the texts read from its documents
 sandiego/
+# Local copy of the San Diego City Council tables
+sdcouncil/
+# Local copy of the places table and the files it is built from
+places/

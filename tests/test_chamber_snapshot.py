@@ -37,7 +37,7 @@ def tables():
         {"name": "Ann Lee", "district": 1, "start": "2026-10-01", "end": "2029-01-08", "role": "Member", "serving": True, "first_vote": "", "last_vote": "", "votes": 0},
     ])
     supervisors["district"] = supervisors["district"].astype("Int64")
-    return {"items": items, "meetings": meetings, "agenda_items": agenda, "votes": votes, "supervisors": supervisors}
+    return {"items": items, "meetings": meetings, "agenda_items": agenda, "votes": votes, "members": supervisors}
 
 
 def test_those_serving_come_first_in_seat_order_and_a_plain_member_has_no_role():
@@ -65,3 +65,20 @@ def test_an_agenda_entry_points_at_its_meeting_and_item_and_carries_a_letter_for
 
 def test_the_data_runs_through_the_last_meeting_with_something_done():
     assert chamber.build(tables(), today="2026-10-11")["data_through"] == "2026-09-16"
+
+
+def test_someone_who_held_two_seats_is_one_person_in_the_later_seat():
+    given = tables()
+    moved = pd.DataFrame([{"name": "Bo Diaz", "district": 7, "start": "2019-01-08", "end": "2022-12-12", "role": "Member", "serving": False,
+                           "first_vote": "2019-01-15", "last_vote": "2022-12-06", "votes": 400}])
+    moved["district"] = moved["district"].astype("Int64")
+    given["members"] = pd.concat([given["members"], moved], ignore_index=True)
+    members = chamber.build(given, today="2026-10-11")["members"]
+    bo = [m for m in members if m["id"] == "bo-diaz"]
+    assert len(bo) == 1 and bo[0]["seat"] == 2 and bo[0]["serving"] and bo[0]["start"] == "2019-01-08" and bo[0]["role"] == "Chair"
+
+
+def test_votes_are_read_whether_the_table_names_a_supervisor_or_a_member():
+    given = tables()
+    given["votes"] = given["votes"].rename(columns={"supervisor": "member"})
+    assert chamber.build(given, today="2026-10-11")["agenda"]["votes"] == ["", "ANA"]

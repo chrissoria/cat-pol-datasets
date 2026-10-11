@@ -58,6 +58,20 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   and hides others, and reads the text of each document: the PDF's own where
   it has some, and OCR (Tesseract) for the scans, which is everything before
   2021. Run by hand; `pull_san_diego.py` remains the weekly pull.
+- `build_sd_council.py` builds
+  [san-diego-council](https://huggingface.co/datasets/chrissoria/san-diego-council):
+  every San Diego City Council meeting since 2010, what was done with each
+  item, and how each member voted, from the City Clerk's agenda site. The
+  agenda gives who held each district; the Clerk's results summary gives the
+  vote by district. `--base` reads every meeting; without it, the last 120
+  days. `README_sd_council.md` is the card.
+- `build_places.py` builds
+  [us-places](https://huggingface.co/datasets/chrissoria/us-places): one row
+  for each state, county, city and named unincorporated community, with
+  population, area, how urban it is, income, inequality, home value, GDP for
+  each person, and for states the age bands and crime rates; links to its
+  flag and seal; and how many records the other datasets here hold of it.
+  `README_places.md` is the card.
 - `build_chamber_snapshot.py` writes `world/chamber.json.gz` beside a local
   body's dataset: the members, items, meetings and votes in the one file
   Capitol World reads for a county board's or a city council's room. It runs
