@@ -108,6 +108,17 @@ reports `RESULT: california-bills session=… bills=… with_text=… chaptered=
 actions=… votes=… member_votes=… legislators=… texts_read=… megabytes=…
 source=… pushed=…`.
 
+After a successful push the step also writes the map files for California
+Capitol World (`build_california_snapshot.py`, a few seconds): `world/world.json.gz`,
+`search.json.gz`, `committees.json.gz`, `text/<n>.json.gz` and
+`world/sessions.json`, in the same dataset repository and in the shapes
+Congress's have. It reports `RESULT: california-map session=… final=… on_map=…
+of=… events=… members=… committees=… kilobytes=… pushed=…`. A session's record
+is treated as final from October 1 of its second year, after the Governor's
+last day to sign or veto: every measure is then on the map where it ended.
+When a new session opens, the step builds the map files of the one just
+finished into `world/archive/<year>/` on its own.
+
 A finished session is built once, by hand, from the file named for the year it
 began: `python build_california_bills.py --session 2023` (two minutes). The
 dataset goes back to 1999-2000; the Legislature's files for earlier sessions

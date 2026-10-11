@@ -51,6 +51,9 @@ FIRST_WITH_PLACES = 2007  # earlier sessions' histories do not say where an acti
 SLOT = {"Assembly": "House", "Senate": "Senate"}  # the app's two wings
 OTHER = {"House": "Senate", "Senate": "House"}
 PARTY = {"Democratic": "D", "Republican": "R", "Independent": "I"}
+# An older session's record says how a measure ended and not where it stood, so one cause of death is added to Congress's.
+UNPLACED = "x"
+CAUSES = {**FATES, UNPLACED: "did not pass; the record does not say where it stopped"}
 BILL_TYPES = ("AB", "SB")  # what becomes law; the rest are resolutions and constitutional amendments
 ONE_HOUSE = ("HR", "SR")  # resolutions of a single house
 COLUMNS = ["bill_id", "session", "bill_number", "measure_type", "measure_number", "special_session", "title", "date",
@@ -219,6 +222,7 @@ def build(tables, final, world_days=WORLD_DAYS):
         "district": None,
         "chamber": SLOT.get(row.chamber, ""),
         "role": "" if row.serving else "Left the seat during the session",
+        **({} if row.serving else {"left": True}),
     } for row in people.itertuples(index=False)]
     known = {member["id"] for member in members}
 
@@ -238,10 +242,11 @@ def build(tables, final, world_days=WORLD_DAYS):
         if not has_places:
             # An older session says only how each measure ended. It is laid where that puts it.
             ended = {"Chaptered": "law" if kind in BILL_TYPES else "adopted", "Vetoed": "vetoed", "Passed": "adopted"}
-            loc = {"kind": ended.get(row["status"], "referral_desk"),
-                   "chamber": "" if row["status"] in ended else SLOT.get(row["origin_chamber"], "House"), "committee": ""}
+            loc = {"kind": ended.get(row["status"], "ended"), "chamber": "", "committee": ""}
         stage = stage_of(kind, loc["kind"], row["status"], passed, left_committee)
         fate = fate_of(kind, loc["kind"], row["status"], stage, passed, row["last_action_date"], final, silent_before)
+        if loc["kind"] == "ended":
+            fate = UNPLACED
         sponsors = [key for key in row["sponsor_ids"].split("; ") if key in known]
         sponsor = sponsors[0] if sponsors else ""
         area = area_of(history)
@@ -313,7 +318,7 @@ def build(tables, final, world_days=WORLD_DAYS):
             "guessed_locations": 0 if has_places else len(world_bills),
             "by_status": {k: int(v) for k, v in measures["status"].value_counts().items() if k},
             "by_kind": pd.Series([bill["loc"]["kind"] for bill in world_bills]).value_counts().to_dict(),
-            "dead": {code: fates.count(code) for code in FATES if code in fates},
+            "dead": {code: fates.count(code) for code in CAUSES if code in fates},
             "pending": 0,
         },
         "roles": {"chairs": {}, "leaders": {}},
@@ -336,7 +341,7 @@ def build(tables, final, world_days=WORLD_DAYS):
         "pending": 0,
         "sponsors": sponsors,
         "sponsor_names": [names[key] for key in sponsors],
-        "fates": FATES,
+        "fates": CAUSES,
         "statuses": statuses,
         "policy_areas": areas,
         "stages": list(STAGES),

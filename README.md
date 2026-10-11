@@ -40,6 +40,10 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   Legislature's own nightly export. It runs at the end of the daily bills run;
   `--session 2023` builds a finished session. `README_california_bills.md` is
   the dataset's card.
+- `build_california_snapshot.py` writes the map files for California Capitol
+  World beside that dataset, in the shapes `build_world_snapshot.py` gives
+  Congress's, so the app reads a state legislature with the code it reads
+  Congress with. It runs whenever the California tables are published.
 - `build_executive_roster.py` builds
   [executive-branch-roster](https://huggingface.co/datasets/chrissoria/executive-branch-roster):
   the cabinet from Senate nominations and the senior White House staff from
