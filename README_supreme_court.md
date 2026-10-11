@@ -199,7 +199,7 @@ application.
 | Column | Description |
 |---|---|
 | `docket` | The docket number; for a case, the file name the Court uses (an original action such as No. 141, Orig. is `22O141`). |
-| `kind` | `case` or `application`. |
+| `kind` | `case` or `application`. A docket numbered with an A is an application's even in the few instances where the Court went on to hear argument on it. |
 | `seq` | The line's place in the docket, from 0. |
 | `date` | YYYY-MM-DD. |
 | `text` | The entry. |

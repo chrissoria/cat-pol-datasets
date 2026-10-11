@@ -791,14 +791,15 @@ def refresh_dockets(tables, everything=False, workers=1):
         if number and (everything or stage != "decided" or decided >= recent):
             wanted[case_id] = number
     files = {number: data for number, data in fetch_many(sorted(set(wanted.values())), workers).items() if data}
-    entries = replace_entries(entries, [row for number, data in files.items() for row in entries_of(number, data, "case")])
+    # A few argued cases carry an application's number (24A884); their entries are kept once, as an application's.
+    entries = replace_entries(entries, [row for number, data in files.items() if "A" not in number for row in entries_of(number, data, "case")])
     fresh = []
     # A case the database has not coded yet is rebuilt from Oyez on every run, so what its docket adds is
     # read from the entries held here, not only from the files fetched today.
     for case_id, term, docket, source in zip(cases["id"], cases["term"], cases["docket"], cases["source"]):
         if source != "scdb" and term >= first_term and docket_number(docket):
             wanted.setdefault(case_id, docket_number(docket))
-    held = entries[(entries["kind"] == "case") & entries["docket"].isin(set(wanted.values()))].sort_values(["docket", "seq"]) if len(entries) else entries
+    held = entries[entries["docket"].isin(set(wanted.values()))].sort_values(["docket", "seq"]) if len(entries) else entries
     by_number = {number: rows.to_dict("records") for number, rows in held.groupby("docket")} if len(held) else {}
     names = ("stage", "date_granted", "date_argued", "date_decided", "lower_court", "docket_url", "disposition", "winner")
     updates = {name: dict(zip(cases["id"], cases[name])) for name in names}
