@@ -191,18 +191,20 @@ it finds fewer than ten cabinet secretaries, which means the listing failed.
 It reports `RESULT: executive-branch-roster rows=… serving=… former=…
 nominated=… white_house=… pushed=…`.
 
-## The weekly members routine (proposed, not yet created)
+## The members of Congress build, monthly
 
-`python3 build_congress_members.py` builds `chrissoria/congress-members`:
-everyone who has served in Congress (`members`), every term (`terms`), and
-`world/members.json` for the member card in Capitol World. It can be a second
-command in the weekly roster routine or a routine of its own, in the same
-environment.
+`python3 build_congress_members.py --if-older-than 28` is the second command of
+the weekly roster routine. It builds `chrissoria/congress-members`: everyone
+who has served in Congress (`members`), every term (`terms`), and
+`world/members.json` for the member card in Capitol World.
 
-Weekly is enough. The table changes when a member is sworn in, leaves, changes
-party or moves office, which happens a few times a month at most, and the
-source is itself updated by hand a few days after the event. A run takes about
-fifteen seconds and makes fewer than ten requests.
+Once a month is enough: membership changes with a special election, a
+resignation or a death, a few times a year, and wholesale each January after an
+election. So the command does nothing unless the published file is at least 28
+days old, and on the other Mondays reports `RESULT: congress-members skipped:
+published N days ago`. A build takes about fifteen seconds and makes fewer than
+ten requests. To rebuild at once, after an election say, run `python
+build_congress_members.py` by hand.
 
 It needs:
 

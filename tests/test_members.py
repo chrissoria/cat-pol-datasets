@@ -171,3 +171,19 @@ def test_a_broken_table_is_not_published():
     twice = table(539)
     twice.loc[1, "bioguide_id"] = twice.loc[0, "bioguide_id"]
     assert "twice" in members.problem_with(twice, terms, nothing)
+
+
+def test_a_run_that_is_not_yet_due_does_nothing(monkeypatch, caplog):
+    import logging
+    monkeypatch.setattr(members, "days_since_published", lambda today=None: 9)
+    monkeypatch.setattr(members, "fetch_legislators", lambda: (_ for _ in ()).throw(AssertionError("should not fetch")))
+    with caplog.at_level(logging.INFO):
+        assert members.main(["--if-older-than", "28", "--no-upload"]) == 0
+    assert "skipped: published 9 days ago" in caplog.text
+
+
+def test_a_run_goes_ahead_when_due_or_when_nothing_is_published(monkeypatch):
+    for age in (28, 400, None):
+        monkeypatch.setattr(members, "days_since_published", lambda today=None, age=age: age)
+        monkeypatch.setattr(members, "fetch_legislators", lambda: (_ for _ in ()).throw(RuntimeError("reached the fetch")))
+        assert members.main(["--if-older-than", "28", "--no-upload"]) == 1  # it tried to build

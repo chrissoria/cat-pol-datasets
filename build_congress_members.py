@@ -33,8 +33,13 @@ Writes the two tables and world/members.json (for the member card in Capitol
 World, limited to people who have served since the 113th Congress) and
 publishes them. Meant to run weekly.
 
+Membership changes a few times a year, so once a month is enough: with
+--if-older-than 28 a run does nothing unless the published file is at least
+that many days old, which lets a weekly routine carry it.
+
 Usage:
     python build_congress_members.py
+    python build_congress_members.py --if-older-than 28
     python build_congress_members.py --no-upload
     python build_congress_members.py --write-card
 """
@@ -422,6 +427,19 @@ def read_published():
         return pd.DataFrame(columns=MEMBER_COLUMNS)
 
 
+def days_since_published(today=None):
+    """How many days ago the published map file was built; None if there is none to read."""
+    try:
+        from huggingface_hub import hf_hub_download
+        path = hf_hub_download(HF_REPO, "world/members.json", repo_type="dataset", token=bills.HF_TOKEN)
+        with open(path, encoding="utf-8") as handle:
+            built = json.load(handle)["generated_at"][:10]
+        today = today or pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d")  # the file is stamped in UTC
+        return max(0, (date.fromisoformat(today) - date.fromisoformat(built)).days)
+    except Exception:
+        return None
+
+
 def problem_with(members, terms, existing):
     """Why these tables should not replace the published ones, or None."""
     serving = int((members["status"] == "serving").sum())
@@ -454,9 +472,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Build the members of Congress tables")
     parser.add_argument("--no-upload", action="store_true", help="write the files but do not publish them")
     parser.add_argument("--write-card", action="store_true", help="also publish README_congress_members.md as the dataset card")
+    parser.add_argument("--if-older-than", type=int, metavar="DAYS", help="do nothing unless the published file is at least this many days old")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    if args.if_older_than is not None:
+        age = days_since_published()
+        if age is not None and age < args.if_older_than:
+            log.info(f"RESULT: congress-members skipped: published {age} day{'' if age == 1 else 's'} ago, "
+                     f"next build when it is {args.if_older_than} days old")
+            return 0
 
     if not args.no_upload:
         problem = "no Hugging Face token" if not bills.HF_TOKEN else bills.hf_write_problem(HF_REPO)
