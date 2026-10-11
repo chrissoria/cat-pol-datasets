@@ -22,3 +22,5 @@ members/
 scotus/
 # Local copy of the California tables
 california/
+# Local copy of the San Diego County tables
+sdcounty/

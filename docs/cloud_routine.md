@@ -124,6 +124,27 @@ began: `python build_california_bills.py --session 2023` (two minutes). The
 dataset goes back to 1999-2000; the Legislature's files for earlier sessions
 hold only the measures that were chaptered.
 
+### Not yet in the routine: San Diego County
+
+`python3 build_sd_county.py` keeps `chrissoria/sd-county-ordinances` current
+(about a minute: eight requests to list every item, the agendas and votes of
+meetings in the last 60 days, and the documents of items that are new). It is
+run by hand for now. To add it to the daily run it would be chained after
+California in `build_federal_bills.py`, never fatal, like the others. It needs:
+
+- `webapi.legistar.com` and `sdcounty.legistar1.com` on the network allowlist
+  (the API, and the documents attached to items);
+- write access to `chrissoria/sd-county-ordinances` for the cloud token;
+- `pdfplumber` in the environment, for the items whose document is a PDF.
+  `cloud_setup.sh` installs it if it can. Without it those items wait
+  (`pdf=skipped` in the result line) and Word documents are still read.
+
+It reports `RESULT: sd-county items=… ordinances=… resolutions=… with_text=…
+meetings=… agenda_items=… votes=… meetings_read=… texts_read=…
+texts_waiting=… pdf=ok|skipped newest=… pushed=…`, reads at most 300
+documents a run, and refuses to publish fewer items or texts than are
+published.
+
 ## 2. Guards
 
 The script stops with exit 1, saving and pushing nothing, when:

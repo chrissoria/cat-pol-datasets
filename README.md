@@ -44,6 +44,13 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   World beside that dataset, in the shapes `build_world_snapshot.py` gives
   Congress's, so the app reads a state legislature with the code it reads
   Congress with. It runs whenever the California tables are published.
+- `build_sd_county.py` builds
+  [sd-county-ordinances](https://huggingface.co/datasets/chrissoria/sd-county-ordinances):
+  everything filed with the San Diego County Board of Supervisors since 2017,
+  each meeting's agenda and what was done, and how each supervisor voted, from
+  the County's Legistar API. `--base` reads every meeting; without it, the
+  recent ones. `README_sd_county.md` is the dataset's card. It is not part of a
+  cloud routine yet (`docs/cloud_routine.md` says what that would take).
 - `build_executive_roster.py` builds
   [executive-branch-roster](https://huggingface.co/datasets/chrissoria/executive-branch-roster):
   the cabinet from Senate nominations and the senior White House staff from

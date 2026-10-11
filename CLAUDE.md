@@ -98,5 +98,5 @@ Plists go to `~/Library/LaunchAgents/`. All paths are derived dynamically — re
 ## Special Cases
 
 - **Berkeley + Bakersfield** — Use Playwright to bypass Cloudflare on `municipal.codes`. Requires `playwright install chromium`.
-- **SD County** — Legistar uses subject-area MatterTypes; `build_sdcounty_dataset.py` filters by title keyword instead of doc type.
+- **SD County** — `build_sd_county.py` builds all six tables of `chrissoria/sd-county-ordinances` from the Legistar API (items, meetings, agenda items, votes, supervisors); `pull_sd_county.py` only calls it. Legistar uses subject-area MatterTypes, so an item is an ordinance or resolution by its title. `build_sdcounty_dataset.py` is the old one-table scraper.
 - **Truth Social** — `checkpoints/truthsocial/trump_truths.parquet` is the local checkpoint; authoritative dataset is `chrissoria/trump-truth-social` on HuggingFace. Intraday market parquets per ticker live in `checkpoints/`.

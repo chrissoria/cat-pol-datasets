@@ -16,4 +16,6 @@ if ! $PY -m pip install --quiet "${PKGS[@]}"; then
   echo "cloud_setup: plain install failed; retrying over distro-managed packages (--ignore-installed)"
   $PY -m pip install --quiet --ignore-installed "${PKGS[@]}"
 fi
+# Only build_sd_county.py wants this, for PDF documents, and it goes without if it has to.
+$PY -m pip install --quiet "pdfplumber>=0.10" || echo "cloud_setup: pdfplumber not installed; PDF documents will be skipped"
 $PY -c 'import pandas, pyarrow, requests, dotenv, datasets, huggingface_hub; print("setup ok")'

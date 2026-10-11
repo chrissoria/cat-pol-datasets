@@ -69,3 +69,20 @@ was drafted on 2026-10-10 and had not been sent when this was written.
 Representative and two senators, not to whichever member they clicked.
 
 **First step.** Send the email and wait for the House's answer.
+
+## Everyone who ever sat on a local body
+
+Asked for on 2026-10-10, as a nice thing to have for the county and city
+worlds. The roster in a local world is the members serving now. A dataset of
+everyone who has ever sat on a board or council, with the dates each was
+elected and left, would let a roster and its statistics go back in time.
+
+What the sources have: Legistar lists a body's members only since the body
+began using it (June 2017 for the San Diego County Board of Supervisors), with
+start and end dates but no district. Earlier members would have to come from
+somewhere else: the body's own history pages, election results from the
+Registrar of Voters, or Wikipedia's lists, none of which has been checked.
+
+First step when this is picked up: one body, San Diego County, back to 1970
+or so by hand, to find out what a row needs (seat or district, how the seat
+was won, why it was left) before trying to do it for many.
