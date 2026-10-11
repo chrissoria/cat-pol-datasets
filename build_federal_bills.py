@@ -1020,6 +1020,14 @@ def main():
         except Exception as e:
             log.warning(f"Executive orders not updated: {e}")
 
+    # The Supreme Court's cases and applications, likewise: other sources, another dataset, never fatal.
+    if not args.dry_run:
+        try:
+            import build_supreme_court
+            build_supreme_court.main([])
+        except Exception as e:
+            log.warning(f"Supreme Court tables not updated: {e}")
+
     log.info(f"RESULT: federal-bills fetched={len(new_df)} total={len(combined)} pushed={pushed}")
     log.info("Done.")
 

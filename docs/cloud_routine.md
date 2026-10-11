@@ -61,6 +61,24 @@ run is unaffected. It reports `RESULT: executive-orders total=… new=…
 newest=… pushed=…`, and it never publishes a table shorter than the one
 already there.
 
+Then it brings `chrissoria/supreme-court-cases` up to date
+(`build_supreme_court.py`, a few minutes): it starts from the published tables,
+rebuilds the cases of the term in progress from Oyez, reads the Court's docket
+for cases still pending, and picks up applications that are new or unresolved.
+This step needs `api.oyez.org` and `www.supremecourt.gov` on the network
+allowlist and write access to `chrissoria/supreme-court-cases` for the cloud
+token. The Court's site turns some networks away; if it does not answer, the
+step still publishes what Oyez gave it and says so. It reports `RESULT:
+supreme-court-cases cases=… pending=… votes=… applications=…
+docket_entries=… dockets=ok|unreachable pushed=…`. `dockets=unreachable` on
+every run means the docket half has to be run from a machine the Court's site
+accepts (`python build_supreme_court.py`, by hand or on a local schedule).
+
+The history in that dataset comes from the Supreme Court Database, which
+publishes a release about once a year. When it does, set `SCDB_RELEASE` in the
+script and run `python build_supreme_court.py --base` by hand (half an hour,
+nearly all of it docket files; it can be stopped and started again).
+
 ## 2. Guards
 
 The script stops with exit 1, saving and pushing nothing, when:

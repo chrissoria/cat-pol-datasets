@@ -25,6 +25,14 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   executive orders table changes. Beside it go `world/text/<n>.json.gz`, the
   orders' text at greater length (250 orders to a file), which the app fetches
   when an order is opened.
+- `build_supreme_court.py` builds
+  [supreme-court-cases](https://huggingface.co/datasets/chrissoria/supreme-court-cases):
+  every case decided since 1946 with each justice's vote (from the Supreme
+  Court Database), the cases of the term in progress (from Oyez), and the
+  dockets and emergency applications since 2017 (from the Court's own files).
+  It runs at the end of the daily bills run; `--base` rebuilds it from the
+  sources. `README_supreme_court.md` is the dataset's card. The dataset is
+  CC BY-NC, as two of its sources are.
 - `build_executive_roster.py` builds
   [executive-branch-roster](https://huggingface.co/datasets/chrissoria/executive-branch-roster):
   the cabinet from Senate nominations and the senior White House staff from
