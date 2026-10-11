@@ -1028,6 +1028,14 @@ def main():
         except Exception as e:
             log.warning(f"Supreme Court tables not updated: {e}")
 
+    # California's bills, from the Legislature's own nightly export: another source, another dataset, never fatal.
+    if not args.dry_run:
+        try:
+            import build_california_bills
+            build_california_bills.main([])
+        except Exception as e:
+            log.warning(f"California tables not updated: {e}")
+
     log.info(f"RESULT: federal-bills fetched={len(new_df)} total={len(combined)} pushed={pushed}")
     log.info("Done.")
 

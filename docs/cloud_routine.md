@@ -83,6 +83,36 @@ publishes a release about once a year. When it does, set `SCDB_RELEASE` in the
 script and run `python build_supreme_court.py --base` by hand (half an hour,
 nearly all of it docket files; it can be stopped and started again).
 
+Last of all it brings `chrissoria/california-bills` up to date
+(`build_california_bills.py`, about half a minute). The Legislature writes its
+whole bill database for the session in progress to a zip file each night at
+about 9:20 pm Pacific, one file for each day of the week
+(`pubinfo_daily_Mon.zip` … `pubinfo_daily_Sun.zip`); the step picks the newest.
+The file is over a gigabyte, nearly all of it committee analyses, so the step
+does not download it: it reads the list of members from the end of the file
+and then asks for the tables and for the text of bills whose newest version is
+not the one already published, each by its own range of bytes. A normal day
+moves about fifteen megabytes. It rebuilds every table of the session from the
+export, so nothing drifts, and writes one file per table and session
+(`data/bills/2025-2026.parquet`). When a new session opens (the first Monday of
+December in even years) the nightly file becomes the new session's and the
+step starts that session's files; the finished session's stay as they are.
+
+This step needs `downloads.leginfo.legislature.ca.gov` on the network allowlist
+and write access to `chrissoria/california-bills` for the cloud token. Without
+either it logs an ERROR line saying which (`California export not reached:
+ProxyError` means the allowlist) and the rest of the run is unaffected. It
+refuses to publish a bills table with under 98% of the published rows or of the
+published texts, or one where fewer than nine bills in ten have text. It
+reports `RESULT: california-bills session=… bills=… with_text=… chaptered=…
+actions=… votes=… member_votes=… legislators=… texts_read=… megabytes=…
+source=… pushed=…`.
+
+A finished session is built once, by hand, from the file named for the year it
+began: `python build_california_bills.py --session 2023` (two minutes). The
+dataset goes back to 1999-2000; the Legislature's files for earlier sessions
+hold only the measures that were chaptered.
+
 ## 2. Guards
 
 The script stops with exit 1, saving and pushing nothing, when:

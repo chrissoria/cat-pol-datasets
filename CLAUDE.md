@@ -37,7 +37,7 @@ When writing new scripts, import from `lib/` instead of re-implementing these pa
 
 **`update_*.py`** — Incremental updaters for ongoing maintenance:
 - `update_datasets.py` — All sources. Use `--city <slug>` or `--exclude <slug>`. Slugs: `sd sf sal oak lb fre ber bak la clovis nb sdco fed eo speeches ts`
-- `update_california_bills.py` — Downloads weekly dump from leginfo.legislature.ca.gov
+- `build_california_bills.py` — `chrissoria/california-bills` from the Legislature's nightly export (downloads.leginfo.legislature.ca.gov), read by byte range rather than downloaded. No flags: the session in progress; `--session 2023`: a finished one. Runs at the end of the daily cloud routine (`docs/cloud_routine.md`). `update_california_bills.py` is its old name and only calls it.
 - `update_san_diego.py` — Standalone SD updater (older; `update_datasets.py` covers SD too)
 
 **Standalone tools:**
@@ -86,7 +86,7 @@ Three scheduled jobs managed by `install_launchd.sh`:
 |---|---|---|
 | `com.catpol.dataset-updater` | Sundays 9:00 AM | `update_datasets.py --exclude ts` |
 | `com.catpol.truthsocial-updater` | Daily 9:00 AM | `update_datasets.py --city ts` |
-| `com.catpol.california-bills-updater` | Sundays 9:30 AM | `update_california_bills.py` |
+| `com.catpol.california-bills-updater` | Sundays 9:30 AM | `update_california_bills.py` (now a second copy of the cloud's daily step) |
 
 ```bash
 bash install_launchd.sh           # Install and load all three

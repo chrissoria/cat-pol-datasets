@@ -33,6 +33,13 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   It runs at the end of the daily bills run; `--base` rebuilds it from the
   sources. `README_supreme_court.md` is the dataset's card. The dataset is
   CC BY-NC, as two of its sources are.
+- `build_california_bills.py` builds
+  [california-bills](https://huggingface.co/datasets/chrissoria/california-bills):
+  every measure of each session of the California Legislature with its text and
+  digest, its history, every roll call and each legislator's vote, from the
+  Legislature's own nightly export. It runs at the end of the daily bills run;
+  `--session 2023` builds a finished session. `README_california_bills.md` is
+  the dataset's card.
 - `build_executive_roster.py` builds
   [executive-branch-roster](https://huggingface.co/datasets/chrissoria/executive-branch-roster):
   the cabinet from Senate nominations and the senior White House staff from
