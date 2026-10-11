@@ -33,6 +33,7 @@ from pathlib import Path
 
 import pandas as pd
 
+import bodies
 import build_federal_bills as bills
 
 log = logging.getLogger(__name__)
@@ -40,10 +41,7 @@ log = logging.getLogger(__name__)
 FILE = "world/chamber.json.gz"
 TABLES = ("items", "meetings", "agenda_items", "votes")
 # The bodies that have a file: where each one's tables are published and kept here, and what its table of members is called.
-BODIES = {
-    "sd-county": {"repo": "chrissoria/sd-county-ordinances", "folder": "sdcounty", "members": "supervisors"},
-    "sd-council": {"repo": "chrissoria/san-diego-council", "folder": "sdcouncil", "members": "council"},
-}
+BODIES = bodies.chambers()
 PLAIN_ROLES = ("Member", "Councilmember", "Supervisor")  # a role that says no more than that the person sits on the body
 
 # One letter for each way a member's vote is recorded; "-" where the record has none for them.
@@ -63,9 +61,12 @@ def listed(values):
     return names, [place[value] for value in values]
 
 
-def members_of(table):
-    """One entry a person. Someone who has held two seats is given the later one, and the whole of their time."""
-    people = []
+def members_of(table, surnames=None):
+    """
+    One entry a person. Someone who has held two seats is given the later one, and the whole of their time. A family name of
+    more than one word cannot be told from the name, so it is given: {"Marni von Wilpert": "von Wilpert"}.
+    """
+    people, surnames = [], {slug(name): surname for name, surname in (surnames or {}).items()}
     for name, seats in table.groupby("name", sort=False):
         seats = seats.sort_values(["serving", "start"])
         last = seats.iloc[-1]
@@ -76,6 +77,7 @@ def members_of(table):
         people.append({
             "id": slug(name),
             "name": name,
+            "surname": surnames.get(slug(name)) or name.split(" ")[-1],
             "seat": None if pd.isna(last["district"]) else int(last["district"]),
             "role": "" if last["role"] in PLAIN_ROLES or not serving and len(seats) > 1 else last["role"],
             "start": min(seats["start"].fillna("")) or "",
@@ -101,10 +103,10 @@ def votes_by_item(votes, members):
     return {item_id: "".join(letters) for item_id, letters in cast.items()}
 
 
-def build(tables, today=None):
+def build(tables, today=None, surnames=None):
     today = today or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     items, meetings, agenda, votes = (tables[name].fillna("") for name in TABLES[:4])
-    members = members_of(tables["members"])
+    members = members_of(tables["members"], surnames)
     person = {member["name"]: index for index, member in enumerate(members)}
 
     items = items.sort_values(["date", "matter_id"], ascending=[False, False]).reset_index(drop=True)
@@ -215,7 +217,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     body = BODIES[args.body]
     try:
-        snapshot = build(read_tables(body, args.tables))
+        snapshot = build(read_tables(body, args.tables), surnames=body["surnames"])
     except Exception as e:
         log.error(f"Chamber file not built: {type(e).__name__}: {e}")
         return 1

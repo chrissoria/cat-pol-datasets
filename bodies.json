@@ -1,0 +1,101 @@
+[
+  {
+    "id": "us-congress",
+    "place": "00",
+    "name": "United States Congress",
+    "body": "Congress",
+    "short": "Congress",
+    "room": "the Capitol",
+    "member": "Member of Congress",
+    "seat": "State or district",
+    "timezone": "America/New_York",
+    "site": "Congress.gov",
+    "url": "https://www.congress.gov/",
+    "world": "capitol",
+    "datasets": [
+      {"repo": "chrissoria/federal-bills-active", "records": "data/*.parquet", "what": "bills", "date": "date_introduced"},
+      {"repo": "chrissoria/federal-votes", "records": "data/*.parquet", "what": "votes by member", "date": "date_of_vote"}
+    ]
+  },
+  {
+    "id": "ca-legislature",
+    "place": "06",
+    "name": "California State Legislature",
+    "body": "Legislature",
+    "short": "the Legislature",
+    "room": "the State Capitol",
+    "member": "Legislator",
+    "seat": "District",
+    "timezone": "America/Los_Angeles",
+    "site": "California Legislative Information",
+    "url": "https://leginfo.legislature.ca.gov/",
+    "since": "1999",
+    "world": "california",
+    "datasets": [
+      {"repo": "chrissoria/california-bills", "records": "data/bills/*.parquet", "what": "bills", "date": "date", "votes": "data/member_votes/*.parquet"}
+    ]
+  },
+  {
+    "id": "sd-county",
+    "place": "06073",
+    "name": "San Diego County Board of Supervisors",
+    "body": "Board of Supervisors",
+    "short": "the Board",
+    "room": "Board Chamber",
+    "member": "Supervisor",
+    "seat": "District",
+    "timezone": "America/Los_Angeles",
+    "site": "the County’s Legistar site",
+    "url": "https://sdcounty.legistar.com/",
+    "since": "June 2017",
+    "world": "chamber",
+    "chamber": {"repo": "chrissoria/sd-county-ordinances", "folder": "sdcounty", "members": "supervisors"},
+    "surnames": {"Monica Montgomery Steppe": "Montgomery Steppe"},
+    "datasets": [
+      {"repo": "chrissoria/sd-county-ordinances", "records": "data/items.parquet", "what": "items", "date": "date",
+       "meetings": "data/meetings.parquet", "votes": "data/votes.parquet"}
+    ]
+  },
+  {
+    "id": "sd-council",
+    "place": "0666000",
+    "name": "San Diego City Council",
+    "body": "City Council",
+    "short": "the Council",
+    "room": "Council Chambers",
+    "member": "Councilmember",
+    "seat": "District",
+    "timezone": "America/Los_Angeles",
+    "site": "the City Clerk’s agenda site",
+    "url": "https://sandiego.hylandcloud.com/211agendaonlinecouncil",
+    "since": "January 2010",
+    "world": "chamber",
+    "chamber": {"repo": "chrissoria/san-diego-council", "folder": "sdcouncil", "members": "council"},
+    "surnames": {"Marni von Wilpert": "von Wilpert", "Henry L. Foster III": "Foster", "Monica Montgomery Steppe": "Montgomery Steppe"},
+    "datasets": [
+      {"repo": "chrissoria/san-diego-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"},
+      {"repo": "chrissoria/san-diego-council", "records": "data/items.parquet", "what": "items", "date": "date",
+       "meetings": "data/meetings.parquet", "votes": "data/votes.parquet"}
+    ]
+  },
+  {"id": "sf-supervisors", "place": "0667000", "name": "San Francisco Board of Supervisors", "body": "Board of Supervisors",
+   "datasets": [{"repo": "chrissoria/sf-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
+  {"id": "la-council", "place": "0644000", "name": "Los Angeles City Council", "body": "City Council",
+   "datasets": [{"repo": "chrissoria/la-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
+  {"id": "oakland-council", "place": "0653000", "name": "Oakland City Council", "body": "City Council",
+   "datasets": [{"repo": "chrissoria/oakland-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
+  {"id": "long-beach-council", "place": "0643000", "name": "Long Beach City Council", "body": "City Council",
+   "datasets": [{"repo": "chrissoria/long-beach-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
+  {"id": "fresno-council", "place": "0627000", "name": "Fresno City Council", "body": "City Council",
+   "datasets": [{"repo": "chrissoria/fresno-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
+  {"id": "berkeley-council", "place": "0606000", "name": "Berkeley City Council", "body": "City Council",
+   "datasets": [{"repo": "chrissoria/berkeley-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
+  {"id": "bakersfield-council", "place": "0603526", "name": "Bakersfield City Council", "body": "City Council",
+   "datasets": [{"repo": "chrissoria/bakersfield-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
+  {"id": "salinas-council", "place": "0664224", "name": "Salinas City Council", "body": "City Council",
+   "datasets": [{"repo": "chrissoria/salinas-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
+  {"id": "newport-beach-council", "place": "0651182", "name": "Newport Beach City Council", "body": "City Council",
+   "datasets": [{"repo": "chrissoria/newport-beach-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
+  {"id": "clovis-council", "place": "0614218", "name": "Clovis City Council", "body": "City Council",
+   "datasets": [{"repo": "chrissoria/clovis-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]}
+]

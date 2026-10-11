@@ -86,3 +86,67 @@ Registrar of Voters, or Wikipedia's lists, none of which has been checked.
 First step when this is picked up: one body, San Diego County, back to 1970
 or so by hand, to find out what a row needs (seat or district, how the seat
 was won, why it was left) before trying to do it for many.
+
+## Green space in the places table
+
+Asked for on 2026-10-11, with blue space and urbanicity. `us-places` has the
+other two: `water_share` from the Census Bureau's gazetteer, and the urban
+share and rural-urban code. Nothing in it measures green.
+
+**What it would take.** A map of land cover laid over each place's outline,
+and a count of the squares of each kind inside. That needs the outlines, which
+the places table does not hold yet, and a decision on what "green" means:
+
+- **Tree cover and vegetation:** the share of a place's land that is forest,
+  shrub, grass, wetland or open space, from the Geological Survey's National
+  Land Cover Database (30-metre squares; the national file is a few
+  gigabytes). A desert city scores low on this however many parks it has.
+- **Parkland:** the share that is public park or protected land, from the
+  Geological Survey's Protected Areas Database. A different question, and
+  closer to what a resident means by green space.
+
+Both could be columns. A state's and a county's figures would be measured
+directly, not averaged from the places inside.
+
+**First step.** One county, San Diego, both ways, to see how far the two
+measures differ and how long a county takes. The sources are from memory and
+have not been checked for coverage (Alaska, Hawaii and the territories are
+the usual gaps) or terms.
+
+## Ask council members to describe themselves
+
+Asked for on 2026-10-11. Write to each member of a board or council that has
+a room in Capitol World, and ask them for what the public record does not
+hold: how they would like to be drawn, a few words on who they are, and where
+they stand on the questions before their body. With that a member's figure
+and card could be theirs, not a generated stand-in.
+
+**Where it stands.** Nothing has been sent or drafted. A member's figure
+today is made from their name by a fixed rule and is explicitly not a
+likeness; their card has their seat, dates and votes. The two rooms so far
+have 14 members serving: five San Diego County supervisors and nine San Diego
+City councilmembers.
+
+**What it would take.**
+
+- A short form or a plain email with a handful of questions, and a place to
+  keep the answers: a table of its own, by member, with the date and the
+  member's consent to publish each answer.
+- A way to show which words are the member's own and which are from the
+  record, so that a visitor can tell them apart.
+- The same invitation to every member of a body, and a card that says so
+  when a member has not answered, so that the room does not favour those who
+  did.
+- A decision on likeness: a figure drawn from a member's own description or
+  photograph changes the rule that figures are not likenesses. It should be
+  done only with the member's say-so, and be undone if they ask.
+- Contact details. An office's public address is in the body's own site;
+  nothing is kept here yet.
+
+**Rules to keep.** Nothing is sent in Chris's name without his reading and
+sending it himself. Policy positions are the member's words, quoted and
+dated, never inferred from votes and presented as theirs.
+
+**First step.** Draft the letter and the questions for one body, the San
+Diego City Council, and decide what a card with a member's own answers looks
+like before asking anyone.

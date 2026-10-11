@@ -66,12 +66,26 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   vote by district. `--base` reads every meeting; without it, the last 120
   days. `README_sd_council.md` is the card.
 - `build_places.py` builds
-  [us-places](https://huggingface.co/datasets/chrissoria/us-places): one row
-  for each state, county, city and named unincorporated community, with
-  population, area, how urban it is, income, inequality, home value, GDP for
-  each person, and for states the age bands and crime rates; links to its
-  flag and seal; and how many records the other datasets here hold of it.
-  `README_places.md` is the card.
+  [us-places](https://huggingface.co/datasets/chrissoria/us-places), the one
+  place everything else reads what a place is from: one row for the country
+  and for each state, territory, county, city, named unincorporated
+  community and district of Congress or a state legislature, with what it is
+  part of, population, area, how urban it is,
+  income, inequality, home value, GDP for each person, and for states the age
+  bands and crime rates; links to its flag and seal; and how many records the
+  other datasets here hold of it. It also writes the table of bodies and
+  `world/bodies.json`, which Capitol World reads to know which places have a
+  room, and `index/`, each place's facts for the app's Stats tab and
+  whiteboard. `README_places.md` is the card.
+- `bodies.json` lists the bodies that make law and that there are records of
+  here: Congress, a legislature, a board, a council. `bodies.py` reads it. To
+  add a body, add an entry; `build_places.py` and `build_chamber_snapshot.py`
+  both work from the list.
+- `build_boundaries.py` adds to us-places the outline of every place, from
+  the Census Bureau's boundary files, and the maps Capitol World draws from
+  them: each state as a grid of its counties, and each county as a grid of
+  its cities and communities. Run it after `build_places.py`; the whole
+  country takes about three minutes.
 - `build_chamber_snapshot.py` writes `world/chamber.json.gz` beside a local
   body's dataset: the members, items, meetings and votes in the one file
   Capitol World reads for a county board's or a city council's room. It runs

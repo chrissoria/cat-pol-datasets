@@ -82,3 +82,9 @@ def test_votes_are_read_whether_the_table_names_a_supervisor_or_a_member():
     given = tables()
     given["votes"] = given["votes"].rename(columns={"supervisor": "member"})
     assert chamber.build(given, today="2026-10-11")["agenda"]["votes"] == ["", "ANA"]
+
+
+def test_a_family_name_is_the_last_word_unless_one_is_given():
+    members = chamber.build(tables(), today="2026-10-11", surnames={"ann lee": "Lee-Smith"})["members"]
+    assert {member["name"]: member["surname"] for member in members}["Ann Lee"] == "Lee-Smith"
+    assert all(member["surname"] == member["name"].split(" ")[-1] for member in members if member["name"] != "Ann Lee")
