@@ -911,7 +911,9 @@ def main():
 
         # Preserve existing summaries before merge — the API-fetched row has no
         # summary fields, so drop_duplicates(keep="last") would otherwise wipe them.
-        summary_cols = ["short_summary", "summary_bullets"]
+        # `summary_text_version` says which text a summary was written from (summarize_federal_bills.py);
+        # kept with it, a bill whose text has since changed shows up there as needing a new one.
+        summary_cols = ["short_summary", "summary_bullets", "summary_text_version"]
         existing_summaries = existing.set_index(["bill_type", "bill_number"])[
             [c for c in summary_cols if c in existing.columns]
         ]
@@ -921,7 +923,9 @@ def main():
         )
         combined = combined.set_index(["bill_type", "bill_number"])
         for col in summary_cols:
-            if col in existing_summaries.columns and col in combined.columns:
+            if col in existing_summaries.columns:
+                if col not in combined.columns:
+                    combined[col] = None
                 mask = combined[col].isna()
                 combined.loc[mask, col] = existing_summaries[col]
         combined = combined.reset_index()

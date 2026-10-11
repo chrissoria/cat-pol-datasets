@@ -24,3 +24,5 @@ scotus/
 california/
 # Local copy of the San Diego County tables
 sdcounty/
+# Summaries written and kept here until they are published
+summaries/

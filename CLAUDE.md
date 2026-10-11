@@ -43,7 +43,7 @@ When writing new scripts, import from `lib/` instead of re-implementing these pa
 **Standalone tools:**
 - `publish_dataset.py` — Validate + publish any parquet to HuggingFace (CLI or importable). Runs required-column, uniqueness, and row-count-regression checks before pushing.
 - `classify_ordinances.py` — Classify unclassified ordinance rows for SD/SF/Salinas. Use `--city sd|sf|sal|all` and `--dry-run`.
-- `summarize_federal_bills.py` — LLM backfill for `short_summary`/`summary_bullets` on `chrissoria/federal-bills-active`. 300 bills/run, most recently updated first.
+- `summarize_federal_bills.py` — writes `short_summary` on `chrissoria/federal-bills-active` and keeps it current. `summary_text_version` records which text a summary was written from; a bill with no summary, or whose text has moved on, needs one. Two ways in: through catllm (`--max N`, a Qwen on Hugging Face by default, for the backlog), or `--export DIR` / `--import FILE` for a model that reads the bills and writes the summaries itself. It publishes by downloading the dataset again and putting in only the summary columns. `summary_bullets` is no longer written.
 
 ## Truth Social Pipeline
 
@@ -67,7 +67,8 @@ python build_federal_bills.py --incremental --dry-run
 # 2. Summarize bills missing LLM summaries (up to 300 per run)
 python summarize_federal_bills.py
 python summarize_federal_bills.py --dry-run
-python summarize_federal_bills.py --batch-size 500
+python summarize_federal_bills.py --max 500
+python summarize_federal_bills.py --status
 ```
 
 Cache: `.federal_bills_cache.parquet` (69 MB, 14,671 bills as of April 2026). Never run without `--incremental` — a full re-fetch takes ~15 minutes and gains nothing. The incremental merge preserves existing `short_summary`/`summary_bullets` columns.
