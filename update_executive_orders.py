@@ -271,6 +271,12 @@ def main(argv=None):
         table.to_parquet(CACHE_FILE, index=False)
         publish(table, write_card=args.write_card)
         pushed = True
+        # The White House map reads a smaller file built from the table. Never fatal.
+        try:
+            import build_whitehouse_snapshot
+            build_whitehouse_snapshot.main(["--table", str(CACHE_FILE)])
+        except Exception as e:
+            log.warning(f"White House snapshot not updated: {e}")
     log.info(f"RESULT: executive-orders total={len(table)} new={added} matched={filled} newest={newest} pushed={pushed}")
     return 0
 

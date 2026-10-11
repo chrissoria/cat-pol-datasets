@@ -18,6 +18,11 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   [executive-orders](https://huggingface.co/datasets/chrissoria/executive-orders)
   current from the Federal Register. It runs at the end of the daily bills run;
   `README_executive_orders.md` is the dataset's card.
+- `build_whitehouse_snapshot.py` writes `world/whitehouse.json.gz` beside the
+  executive-orders dataset: for each order, who signed it, the departments it
+  directs and the earlier orders it revokes or amends, read from its text. It
+  is the data for Capitol World's White House map and runs whenever the
+  executive orders table changes.
 - `build_congress_archive.py` builds the map files of a finished Congress
   (2003 on) from GovInfo's Bill Status bulk data, once, and uploads them to
   `world/archive/<congress>/`. It is run by hand, not by the daily job:
