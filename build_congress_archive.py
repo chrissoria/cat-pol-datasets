@@ -13,7 +13,8 @@ For each Congress this writes:
   archive/bills_<congress>.parquet       every bill, in the columns the map uses
   archive/<congress>/world.json.gz       the map file, with every bill at the place it ended
   archive/<congress>/search.json.gz      the search index
-and uploads the last two to world/archive/<congress>/ next to the live map
+  archive/<congress>/text/<n>.json.gz    the summaries too long for the map file
+and uploads all but the first to world/archive/<congress>/ next to the live map
 files, then refreshes world/congresses.json, the list the app's picker reads.
 
 With --committees it also writes archive/<congress>/committees.json.gz: each
@@ -335,6 +336,12 @@ def build_congress(congress, raw_dir, out_dir, with_committees=False):
     log.info(f"Congress {congress}: {counts['total']} bills, {entry['laws']} laws, {len(world['members'])} members, "
              f"{counts['events']} events, {counts['guessed_locations']} guessed locations; {sizes}")
     paths = [folder / name for name in files]
+    (folder / "text").mkdir(exist_ok=True)
+    for number, texts in sorted(snapshot.summary_files(df).items()):
+        path = folder / "text" / f"{number}.json.gz"
+        with gzip.open(path, "wt", encoding="utf-8") as handle:
+            json.dump(texts, handle, ensure_ascii=False, separators=(",", ":"))
+        paths.append(path)
     problem = None
     if with_committees:
         try:
@@ -359,8 +366,9 @@ def upload(congress, paths, entry):
         pass  # first archive
     listed[entry["congress"]] = entry
     index = json.dumps({"archive": [listed[key] for key in sorted(listed, reverse=True)]}, separators=(",", ":"))
-    operations = [CommitOperationAdd(path_in_repo=f"world/archive/{congress}/{path.name}", path_or_fileobj=str(path))
-                  for path in paths]
+    folder = paths[0].parent
+    operations = [CommitOperationAdd(path_in_repo=f"world/archive/{congress}/{path.relative_to(folder).as_posix()}",
+                                     path_or_fileobj=str(path)) for path in paths]
     operations.append(CommitOperationAdd(path_in_repo="world/congresses.json", path_or_fileobj=io.BytesIO(index.encode())))
     api.create_commit(repo_id=bills.HF_REPO, repo_type="dataset", operations=operations,
                       commit_message=f"Add world/archive/{congress}")

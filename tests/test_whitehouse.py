@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import build_whitehouse_snapshot as wh
+import pandas as pd
 
 
 def test_revocation_in_a_sentence_and_the_order_it_merely_describes():
@@ -44,3 +45,17 @@ def test_lead_department_needs_two_mentions_and_no_tie():
 def test_excerpt_skips_the_formula():
     text = "By the authority vested in me as President, it is hereby ordered:\n\nSection 1 . Purpose . Farmers are essential."
     assert wh.excerpt_of(text) == "Purpose. Farmers are essential."
+
+
+def test_body_keeps_paragraphs_and_text_files_follow_the_map_order():
+    text = ("Executive Order 1 of May 1, 2025\n\nBy the authority vested in me, it is hereby ordered:\n\n"
+            "Section 1. Purpose.   Farmers are\nessential.\n\nSec. 2. Policy. Relief follows.")
+    assert wh.body_of(text) == "Purpose. Farmers are essential.\nSec. 2. Policy. Relief follows."
+    df = pd.DataFrame({
+        "date": ["2025-02-01", "2025-01-01", "2025-03-01"],
+        "executive_order_number": ["2", "1", "3"],
+        "text": ["second", "first", "x" * (wh.TEXT_CHARS + 50)],
+    })
+    files = wh.text_files(df)
+    assert files[0][:2] == ["first", "second"]
+    assert len(files[0][2]) == wh.TEXT_CHARS + 1 and files[0][2].endswith("…")

@@ -22,7 +22,9 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   executive-orders dataset: for each order, who signed it, the departments it
   directs and the earlier orders it revokes or amends, read from its text. It
   is the data for Capitol World's White House map and runs whenever the
-  executive orders table changes.
+  executive orders table changes. Beside it go `world/text/<n>.json.gz`, the
+  orders' text at greater length (250 orders to a file), which the app fetches
+  when an order is opened.
 - `build_executive_roster.py` builds
   [executive-branch-roster](https://huggingface.co/datasets/chrissoria/executive-branch-roster):
   the cabinet from Senate nominations and the senior White House staff from

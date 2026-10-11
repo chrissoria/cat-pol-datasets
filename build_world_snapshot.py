@@ -36,8 +36,12 @@ log = logging.getLogger("world_snapshot")
 SCHEMA = 1
 WORLD_DAYS = 30
 EVENT_DAYS = 7
-SUMMARY_CHARS = 320
-TITLE_CHARS = 160
+SUMMARY_CHARS = 320  # in the map file of a finished Congress, whose official summaries run to pages
+LIVE_SUMMARY_CHARS = 700  # the current Congress's summaries are a few sentences: keep them whole
+TITLE_CHARS = 160  # in the search index, where a title is one line of a list
+WORLD_TITLE_CHARS = 600  # on a bill's own card, which scrolls
+TEXT_CHARS = 6000  # a summary in the side files the app fetches when a bill is opened
+TEXT_FILES = 16  # those files, by bill number modulo this
 ACTION_CHARS = 1500  # a referral to many committees runs long; the app shows it in a scrolling box
 
 STATES = {
@@ -378,6 +382,24 @@ FATES = {
 SILENT_DAYS = 365
 
 
+def clipped(text, limit):
+    """`text` cut to `limit` characters, with an ellipsis when something was lost."""
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
+def summary_files(df):
+    """The summaries too long for the map file, as {file number: {bill id: summary}}.
+
+    The app shows the short one at once and swaps this in when a bill is opened.
+    """
+    files = {}
+    for congress, kind, number, summary in zip(df["congress"], df["bill_type"], df["bill_number"], df["short_summary"]):
+        summary = text_of(summary).strip()
+        if len(summary) > SUMMARY_CHARS:
+            files.setdefault(int(number) % TEXT_FILES, {})[f"{congress}-{kind.lower()}-{number}"] = clipped(summary, TEXT_CHARS)
+    return files
+
+
 def fate_of(status, last_action, kind, last_date, final, silent_before):
     """One key of FATES, or "." for a bill that is not dead."""
     stage = stage_of(status, last_action, kind)
@@ -470,7 +492,7 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
             "id": row["id"],
             "type": row["bill_type"],
             "number": text_of(row["bill_number"]),
-            "title": text_of(row.get("title"))[:TITLE_CHARS],
+            "title": clipped(text_of(row.get("title")), WORLD_TITLE_CHARS),
             "sponsor": row["sponsor_id"],
             "cosponsors": int(row.get("num_cosponsors") or 0),
             "policy_area": text_of(row.get("policy_area")),
@@ -478,7 +500,7 @@ def build(cache_file, roster=None, committees=None, roles=None, pending_file=Non
             "loc": loc,
             "last_action": {"date": text_of(row.get("date_last_action")), "text": text_of(row.get("last_action_text"))[:ACTION_CHARS]},
             "introduced": text_of(row.get("date_introduced")),
-            "summary": summary[:SUMMARY_CHARS] + ("…" if len(summary) > SUMMARY_CHARS else ""),
+            "summary": clipped(summary, SUMMARY_CHARS if final else LIVE_SUMMARY_CHARS),
             "url": text_of(row.get("url")),
             **({"fate": fate} if fate != "." else {}),
         })

@@ -71,3 +71,16 @@ def test_fate_of_names_how_a_bill_died():
     assert fate("Calendared", "Placed on the Union Calendar.", "calendar", "2024-03-01", True, "") == "w"
     assert fate("Passed House", "Received in the Senate.", "other_chamber", "2024-03-01", True, "") == "o"
     assert fate("Passed House", "Agreed to.", "adopted", "2024-03-01", True, "") == "."
+
+
+def test_long_summaries_go_to_side_files_by_bill_number():
+    long = "A" * (snapshot.SUMMARY_CHARS + 1)
+    df = pd.DataFrame({
+        "congress": [118, 118, 118], "bill_type": ["HR", "S", "HR"], "bill_number": ["17", "33", "2"],
+        "short_summary": [long, "B" * (snapshot.TEXT_CHARS + 9), "short enough"],
+    })
+    files = snapshot.summary_files(df)
+    assert set(files) == {1}  # 17 and 33 are both 1 modulo 16; the short one needs no file
+    assert files[1]["118-hr-17"] == long
+    assert len(files[1]["118-s-33"]) == snapshot.TEXT_CHARS + 1
+    assert snapshot.clipped("abc", 3) == "abc" and snapshot.clipped("abcd", 3) == "abc…"

@@ -41,6 +41,9 @@ HF_REPO = "chrissoria/executive-orders"
 OUT_FILE = bills.SCRIPT_DIR / "world" / "whitehouse.json.gz"
 SCHEMA = 1
 EXCERPT_CHARS = 260
+TEXT_CHARS = 6000  # an order's text in the side files the app fetches when an order is opened
+TEXT_PER_FILE = 250  # orders to a side file, oldest first
+TEXT_DIR = bills.SCRIPT_DIR / "world" / "text"
 TITLE_CHARS = 180
 
 # The departments an order can be addressed to: (code, name on the map, what to look for).
@@ -143,19 +146,39 @@ def relations_in(text, own_number="", title=""):
     return found
 
 
-def excerpt_of(text):
-    """The start of what the order says, after the "By the authority vested in me…" formula."""
-    body = re.sub(r"\s+", " ", text or "").strip()
+def body_of(text):
+    """What the order says, after the "By the authority vested in me…" formula. Paragraphs are kept."""
+    paragraphs = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"\n\s*\n", text or "")]
+    body = "\n".join(part for part in paragraphs if part)
     start = re.search(r"it is (?:hereby )?ordered(?: as follows)?[:.]?\s*", body[:1500], re.I)
     if start:
         body = body[start.end():]
-    body = re.sub(r"\s+([.,;:])", r"\1", body)
-    body = re.sub(r"^(?:Section|Sec\.?)\s*1\s*\.?\s*", "", body).lstrip(" .")
+    body = re.sub(r"[ ]+([.,;:])", r"\1", body)
+    return re.sub(r"^(?:Section|Sec\.?)\s*1\s*\.?\s*", "", body).lstrip(" .")
+
+
+def excerpt_of(text):
+    """The start of what the order says, in one line."""
+    body = re.sub(r"\s+", " ", body_of(text))
     return body[:EXCERPT_CHARS].rstrip() + ("…" if len(body) > EXCERPT_CHARS else "")
 
 
+def ordered(df):
+    """The orders oldest first: the order of every list in the map file and of the text files."""
+    return df.sort_values(["date", "executive_order_number"]).reset_index(drop=True)
+
+
+def text_files(df):
+    """Each order's text, cut to TEXT_CHARS, in lists of TEXT_PER_FILE in the map file's order."""
+    texts = []
+    for text in ordered(df)["text"]:
+        body = body_of(text)
+        texts.append(body if len(body) <= TEXT_CHARS else body[:TEXT_CHARS].rstrip() + "…")
+    return [texts[start:start + TEXT_PER_FILE] for start in range(0, len(texts), TEXT_PER_FILE)]
+
+
 def build(df):
-    df = df.sort_values(["date", "executive_order_number"]).reset_index(drop=True)
+    df = ordered(df)
     numbers = df["executive_order_number"].fillna("").astype(str)
     ids = [number if number and count == 1 else f"x{index}"
            for index, (number, count) in enumerate(zip(numbers, numbers.map(numbers.value_counts())))]
@@ -195,6 +218,7 @@ def build(df):
             "with_department": int(sum(1 for code in lead if code >= 0)),
         },
         "presidents": presidents,
+        "text_per_file": TEXT_PER_FILE,  # world/text/<n>.json.gz holds the fuller text of orders n*this onwards
         "departments": [{"code": code, "name": name, "named_in": int(department_counts.get(index, 0)),
                          "lead_of": int(lead_counts.get(index, 0))} for index, (code, name, _) in enumerate(DEPARTMENTS)],
         # One entry per order in each list below, oldest first.
@@ -226,6 +250,12 @@ def main(argv=None):
     OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(OUT_FILE, "wt", encoding="utf-8") as handle:
         json.dump(world, handle, ensure_ascii=False, separators=(",", ":"))
+    TEXT_DIR.mkdir(parents=True, exist_ok=True)
+    text_paths = []
+    for number, texts in enumerate(text_files(df)):
+        text_paths.append(TEXT_DIR / f"{number}.json.gz")
+        with gzip.open(text_paths[-1], "wt", encoding="utf-8") as handle:
+            json.dump(texts, handle, ensure_ascii=False, separators=(",", ":"))
     counts = world["counts"]
     log.info(f"White House snapshot: {counts['total']} orders, {len(world['presidents'])} presidents, "
              f"{counts['revoked']} revoked by a later order, {counts['with_department']} naming a department; "
@@ -235,11 +265,13 @@ def main(argv=None):
     if not bills.HF_TOKEN:
         log.error("No Hugging Face token; snapshot written locally but not uploaded")
         return 1
-    from huggingface_hub import HfApi
-    HfApi(token=bills.HF_TOKEN).upload_file(path_or_fileobj=str(OUT_FILE), path_in_repo="world/whitehouse.json.gz",
-                                           repo_id=HF_REPO, repo_type="dataset",
-                                           commit_message="Update world/whitehouse.json.gz")
-    log.info(f"Uploaded world/whitehouse.json.gz to {HF_REPO}")
+    from huggingface_hub import CommitOperationAdd, HfApi
+    # One commit, so the map file and the text files it points into never disagree.
+    operations = [CommitOperationAdd(path_in_repo="world/whitehouse.json.gz", path_or_fileobj=str(OUT_FILE))]
+    operations += [CommitOperationAdd(path_in_repo=f"world/text/{path.name}", path_or_fileobj=str(path)) for path in text_paths]
+    HfApi(token=bills.HF_TOKEN).create_commit(repo_id=HF_REPO, repo_type="dataset", operations=operations,
+                                             commit_message="Update world/whitehouse.json.gz and world/text")
+    log.info(f"Uploaded world/whitehouse.json.gz and {len(text_paths)} text files to {HF_REPO}")
     return 0
 
 
