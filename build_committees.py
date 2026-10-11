@@ -111,12 +111,18 @@ def seats_table(membership):
 
 # ── Meetings ─────────────────────────────────────────────────────────────────
 
+class ListingFailed(RuntimeError):
+    """A page of the meeting list did not come back, so the list is incomplete."""
+
+
 def list_meetings(chamber, congress=bills.CONGRESS):
     """[(event_id, update_date)] for every meeting of one chamber's committees."""
     found, offset = [], 0
     while True:
         data = bills.api_get(f"/committee-meeting/{congress}/{chamber}", {"limit": 250, "offset": offset})
-        page = (data or {}).get("committeeMeetings", [])
+        if data is None:  # a failed page is not the end of the list
+            raise ListingFailed(f"the {chamber} meeting list of Congress {congress} stopped at entry {offset}")
+        page = data.get("committeeMeetings", [])
         found.extend((str(item.get("eventId", "")), item.get("updateDate", "")) for item in page)
         offset += 250
         if len(page) < 250:
@@ -173,15 +179,23 @@ def fetch_meetings(existing, max_minutes=None, congress=bills.CONGRESS, pause=0)
 
     `pause` is a wait in seconds between meetings, for a long backfill that must
     leave room under the API's hourly limit.
+
+    Returns the table, how many meetings were fetched, and how many are still
+    to fetch: 0 when the table is complete, None when the list of meetings
+    could not be read, so nobody can say.
     """
     known = {} if existing.empty else dict(zip(existing["event_id"], existing["update_date"]))
     todo = []
     listed = set()
-    for chamber in CHAMBERS:
-        for event_id, updated in list_meetings(chamber, congress):
-            listed.add(event_id)
-            if known.get(event_id) != updated:
-                todo.append((chamber, event_id))
+    try:
+        for chamber in CHAMBERS:
+            for event_id, updated in list_meetings(chamber, congress):
+                listed.add(event_id)
+                if known.get(event_id) != updated:
+                    todo.append((chamber, event_id))
+    except ListingFailed as e:
+        log.error(f"{e}; keeping the meetings already held")
+        return existing, 0, None
     log.info(f"Meetings listed: {len(listed)}; to fetch: {len(todo)}")
     deadline = time.time() + max_minutes * 60 if max_minutes else None
     rows, failed_in_a_row = [], 0
@@ -210,9 +224,11 @@ def fetch_meetings(existing, max_minutes=None, congress=bills.CONGRESS, pause=0)
         combined = existing
     else:
         combined = pd.concat([existing[~existing["event_id"].isin(fresh["event_id"])], fresh], ignore_index=True)
+    left = len(todo) - len(rows)
     if combined.empty:
-        return combined, len(rows)
-    return combined.sort_values(["date", "event_id"], ascending=[False, True]).reset_index(drop=True), len(rows)
+        return combined, len(rows), left
+    combined = combined.sort_values(["date", "event_id"], ascending=[False, True]).reset_index(drop=True)
+    return combined, len(rows), left
 
 
 def bootstrap_from_hub(out):
@@ -388,7 +404,7 @@ def main(argv=None):
         members.to_parquet(out / "committee_members.parquet", index=False)
     committees.to_parquet(out / "committees.parquet", index=False)
 
-    meetings, fetched = fetch_meetings(existing, args.max_minutes)
+    meetings, fetched, _ = fetch_meetings(existing, args.max_minutes)
     # Never replace the published meetings with a shorter list: a partial listing is an API hiccup, not news.
     shrank = len(meetings) < 0.98 * len(existing)
     if not meetings.empty and not shrank:

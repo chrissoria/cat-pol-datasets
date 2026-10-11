@@ -30,7 +30,11 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
 - `build_congress_archive.py` builds the map files of a finished Congress
   (2003 on) from GovInfo's Bill Status bulk data, once, and uploads them to
   `world/archive/<congress>/`. It is run by hand, not by the daily job:
-  `python build_congress_archive.py 113-118`.
+  `python build_congress_archive.py 113-118`. With `--committees` it adds each
+  committee's roster and meetings, about an hour and a half per Congress; it
+  can be stopped and repeated, publishes a committee file only from a complete
+  set of meetings, and skips a Congress that is already published. `--status`
+  lists what is published and what is missing.
 - `build_committees.py` builds
   [federal-committees](https://huggingface.co/datasets/chrissoria/federal-committees):
   every committee and subcommittee, its members, and every hearing, markup and

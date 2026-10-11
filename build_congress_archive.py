@@ -20,13 +20,17 @@ With --committees it also writes archive/<congress>/committees.json.gz: each
 committee's roster late in that Congress (from the history of the
 congress-legislators project) and its meetings (from the Congress.gov API, one
 call per meeting, so this part takes an hour or more per Congress). It can be
-stopped and started again; meetings already fetched are kept.
+stopped and started again; meetings already fetched are kept. A committee file
+is only written from a complete set of meetings, and a Congress whose file is
+already published is skipped, so the same command can be repeated until
+--status shows nothing missing.
 
 Usage:
     python build_congress_archive.py 118            # one Congress
     python build_congress_archive.py 113-118        # a range
     python build_congress_archive.py 118 --no-upload
     python build_congress_archive.py 113-118 --committees   # rosters and meetings as well
+    python build_congress_archive.py 113-118 --status       # what is published, what is missing
 """
 
 import argparse
@@ -37,6 +41,7 @@ import json
 import logging
 import re
 import sys
+import time
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
@@ -63,6 +68,10 @@ LEGISLATORS = ("legislators-current.json", "legislators-historical.json")
 MEMBERSHIP_COMMITS = "https://api.github.com/repos/unitedstates/congress-legislators/commits"
 MEMBERSHIP_FILE = "https://raw.githubusercontent.com/unitedstates/congress-legislators/{sha}/committee-membership-current.yaml"
 MEETING_PAUSE = 0.8  # seconds between meetings: about 4,000 calls an hour, under the API's 5,000
+STALL_WAIT = 15 * 60  # seconds to wait when no meeting comes back, before trying again
+STALL_TRIES = 5  # waits in a row before giving up: longer than an hour's lock-out from the API
+MISSING_SHARE = 0.01  # share of a Congress's meetings that may stay unavailable in a published file
+APP_FILES = ("world.json.gz", "search.json.gz", "committees.json.gz")
 
 
 def ordinal(number):
@@ -245,12 +254,28 @@ def build_committee_file(congress, seats, out_dir):
         raise RuntimeError(f"the committee list of Congress {congress} came back empty")
     meetings_file = out_dir / f"meetings_{congress}.parquet"
     meetings = pd.read_parquet(meetings_file) if meetings_file.exists() else pd.DataFrame()
+    stalls = 0
     while True:  # in ten-minute stretches, saving after each, so a stop loses little
-        meetings, fetched = committees.fetch_meetings(meetings, max_minutes=10, congress=congress, pause=MEETING_PAUSE)
+        meetings, fetched, left = committees.fetch_meetings(meetings, max_minutes=10, congress=congress,
+                                                            pause=MEETING_PAUSE)
         if not meetings.empty:
             meetings.to_parquet(meetings_file, index=False)
-        if not fetched:
+        if left == 0:
             break
+        if fetched:
+            stalls = 0
+            continue
+        stalls += 1  # nothing came back: an outage or the hourly limit, not the end of the work
+        few = left is not None and left <= max(5, MISSING_SHARE * (len(meetings) + left))
+        if few and stalls > 1:  # still unavailable after a wait: the API lists them but does not have them
+            log.warning(f"Congress {congress}: {left} meetings are listed but cannot be fetched; going on without them")
+            break
+        if stalls > STALL_TRIES:
+            raise RuntimeError(f"{'an unknown number of' if left is None else left} meetings still to fetch after "
+                               f"{STALL_TRIES} waits; {len(meetings)} are saved, and running this again carries on")
+        log.warning(f"Congress {congress}: no meeting came back; waiting {STALL_WAIT // 60} minutes "
+                    f"(try {stalls} of {STALL_TRIES})")
+        time.sleep(STALL_WAIT)
     content = committees.app_snapshot(listing, seats, meetings)
     path = out_dir / str(congress) / "committees.json.gz"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -268,7 +293,10 @@ def sponsor_chambers(df):
 
 
 def build_congress(congress, raw_dir, out_dir, with_committees=False):
-    """Write the table and the map files of one Congress. Returns the paths and a summary."""
+    """Write the table and the map files of one Congress.
+
+    Returns the paths, a summary, and what went wrong with the committee file (None if nothing did).
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     table = out_dir / f"bills_{congress}.parquet"
     if table.exists():
@@ -307,12 +335,14 @@ def build_congress(congress, raw_dir, out_dir, with_committees=False):
     log.info(f"Congress {congress}: {counts['total']} bills, {entry['laws']} laws, {len(world['members'])} members, "
              f"{counts['events']} events, {counts['guessed_locations']} guessed locations; {sizes}")
     paths = [folder / name for name in files]
+    problem = None
     if with_committees:
         try:
             paths.append(build_committee_file(congress, seats, out_dir))
         except Exception as e:  # the bills are still worth publishing
-            log.warning(f"Congress {congress}: committee file not built: {e}")
-    return paths, entry
+            problem = str(e)
+            log.error(f"Congress {congress}: committee file not built: {e}")
+    return paths, entry, problem
 
 
 def upload(congress, paths, entry):
@@ -337,6 +367,36 @@ def upload(congress, paths, entry):
     log.info(f"Uploaded Congress {congress} to {bills.HF_REPO}/world/archive/{congress}")
 
 
+def published():
+    """{congress: the app files it has on the Hub}, for every archived Congress."""
+    from huggingface_hub import HfApi
+
+    found = {}
+    for name in HfApi(token=bills.HF_TOKEN).list_repo_files(bills.HF_REPO, repo_type="dataset"):
+        parts = name.split("/")
+        if len(parts) == 4 and parts[:2] == ["world", "archive"] and parts[2].isdigit():
+            found.setdefault(int(parts[2]), set()).add(parts[3])
+    return found
+
+
+def status(wanted, out_dir):
+    """Log what each Congress has on the Hub and on this machine. Returns the Congresses with a file missing."""
+    on_hub = published()
+    missing = []
+    for congress in sorted(wanted, reverse=True):
+        have = on_hub.get(congress, set())
+        lacking = [name for name in APP_FILES if name not in have]
+        meetings_file = out_dir / f"meetings_{congress}.parquet"
+        saved = len(pd.read_parquet(meetings_file, columns=["event_id"])) if meetings_file.exists() else 0
+        log.info(f"Congress {congress}: " + ("complete" if not lacking else "missing " + ", ".join(lacking))
+                 + f"; {saved} meetings saved on this machine")
+        if lacking:
+            missing.append(congress)
+    log.info(f"RESULT: congress-archive checked={len(wanted)} complete={len(wanted) - len(missing)} "
+             f"missing={','.join(map(str, missing)) or 'none'}")
+    return missing
+
+
 def parse_range(text):
     first, _, last = text.partition("-")
     return list(range(int(first), int(last or first) + 1))
@@ -349,6 +409,8 @@ def main(argv=None):
     parser.add_argument("--out", default=str(ARCHIVE_DIR), help="directory to write into")
     parser.add_argument("--no-upload", action="store_true", help="write the files but do not upload them")
     parser.add_argument("--committees", action="store_true", help="also build each committee's roster and meetings (slow)")
+    parser.add_argument("--force", action="store_true", help="with --committees, rebuild a Congress that is already published")
+    parser.add_argument("--status", action="store_true", help="only report what is published and what is missing")
     args = parser.parse_args(argv)
 
     wanted = parse_range(args.congress)
@@ -356,12 +418,20 @@ def main(argv=None):
         parser.error(f"choose finished Congresses from {FIRST_BULK_CONGRESS} to {int(bills.CONGRESS) - 1}")
     if not args.no_upload and not bills.HF_TOKEN:
         parser.error("no Hugging Face token; pass --no-upload to write the files only")
+    if args.status:
+        return 1 if status(wanted, Path(args.out)) else 0
+    done = published() if args.committees and not args.force and not args.no_upload else {}
     failed = 0
     for congress in wanted:
+        if set(APP_FILES) <= done.get(congress, set()):
+            log.info(f"Congress {congress} is already published in full; skipping (--force rebuilds it)")
+            continue
         try:
-            paths, entry = build_congress(congress, Path(args.raw), Path(args.out), args.committees)
+            paths, entry, problem = build_congress(congress, Path(args.raw), Path(args.out), args.committees)
             if not args.no_upload:
                 upload(congress, paths, entry)
+            if problem:
+                failed += 1
         except Exception as e:
             failed += 1
             log.error(f"Congress {congress} failed: {e}")

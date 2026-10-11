@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import pandas as pd
 import pytest
 
 import build_congress_archive as archive
@@ -61,3 +62,54 @@ def test_chamber_in_uses_the_term_of_that_congress():
     terms = [{"chamber": "House of Representatives", "startYear": 2001, "endYear": 2025}, {"chamber": "Senate", "startYear": 2025}]
     assert archive.snapshot.chamber_in(terms, 118) == "House of Representatives"
     assert archive.snapshot.chamber_in(terms, 119) == "Senate"
+
+
+def _meetings(count):
+    return pd.DataFrame({"event_id": [str(n) for n in range(count)], "update_date": "2024-01-01", "date": "2024-01-01"})
+
+
+def _committee_run(monkeypatch, tmp_path, answers):
+    """Run build_committee_file against a scripted fetch_meetings. Returns the waits taken."""
+    waits = []
+    replies = iter(answers)
+    monkeypatch.setattr(archive.committees, "fetch_committee_list", lambda congress: pd.DataFrame({"committee_code": ["hsag00"]}))
+    monkeypatch.setattr(archive.committees, "fetch_meetings", lambda *a, **k: next(replies))
+    monkeypatch.setattr(archive.committees, "app_snapshot", lambda listing, seats, meetings: {"meetings": len(meetings)})
+    monkeypatch.setattr(archive.time, "sleep", waits.append)
+    path = archive.build_committee_file(118, pd.DataFrame(), tmp_path)
+    return path, waits
+
+
+def test_committee_file_waits_out_an_outage_and_carries_on(monkeypatch, tmp_path):
+    answers = [(_meetings(400), 400, 600), (_meetings(400), 0, 600), (_meetings(400), 0, None), (_meetings(1000), 600, 0)]
+    path, waits = _committee_run(monkeypatch, tmp_path, answers)
+    assert waits == [archive.STALL_WAIT, archive.STALL_WAIT]
+    assert path.exists() and len(pd.read_parquet(tmp_path / "meetings_118.parquet")) == 1000
+
+
+def test_committee_file_is_not_written_from_a_partial_set(monkeypatch, tmp_path):
+    answers = [(_meetings(400), 400, 600)] + [(_meetings(400), 0, 600)] * (archive.STALL_TRIES + 1)
+    with pytest.raises(RuntimeError, match="600 meetings still to fetch"):
+        _committee_run(monkeypatch, tmp_path, answers)
+    assert not (tmp_path / "118" / "committees.json.gz").exists()
+    assert len(pd.read_parquet(tmp_path / "meetings_118.parquet")) == 400  # kept for the next run
+
+
+def test_committee_file_goes_on_without_a_few_unavailable_meetings(monkeypatch, tmp_path):
+    answers = [(_meetings(997), 997, 3), (_meetings(997), 0, 3), (_meetings(997), 0, 3)]
+    path, waits = _committee_run(monkeypatch, tmp_path, answers)
+    assert waits == [archive.STALL_WAIT] and path.exists()
+
+
+def test_a_failed_page_of_the_meeting_list_is_not_the_end_of_the_list(monkeypatch):
+    pages = iter([{"committeeMeetings": [{"eventId": n, "updateDate": "x"} for n in range(250)]}, None])
+    monkeypatch.setattr(archive.committees.bills, "api_get", lambda *a, **k: next(pages))
+    with pytest.raises(archive.committees.ListingFailed):
+        archive.committees.list_meetings("house", 118)
+
+
+def test_fetch_meetings_keeps_what_it_has_when_the_list_fails(monkeypatch):
+    monkeypatch.setattr(archive.committees.bills, "api_get", lambda *a, **k: None)
+    held = _meetings(12)
+    table, fetched, left = archive.committees.fetch_meetings(held, congress=118)
+    assert len(table) == 12 and fetched == 0 and left is None
