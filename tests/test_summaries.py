@@ -93,3 +93,9 @@ def test_the_newest_summary_for_a_bill_and_version_is_the_one_kept(tmp_path, mon
     store = sm.keep([("HR3", "Introduced in House", "second"), ("HR3", "Reported in House", "third")], "b")
     assert sorted(zip(store["text_version"], store["summary"])) == [("Introduced in House", "second"), ("Reported in House", "third")]
     assert len(sm.load_store()) == 2
+    # Runs side by side write files of their own, and all of them are read back.
+    sm.keep([("S9", "Introduced in Senate", "fourth")], "b", part="1of4")
+    sm.keep([("S9", "Introduced in Senate", "fifth"), ("S10", "Introduced in Senate", "sixth")], "b", part="2of4")
+    store = sm.load_store()
+    assert len(store) == 4 and (tmp_path / "store-1of4.parquet").exists()
+    assert store.set_index("key").loc["S10", "summary"] == "sixth"

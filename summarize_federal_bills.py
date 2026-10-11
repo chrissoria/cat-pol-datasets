@@ -22,6 +22,9 @@ Two ways of writing them:
         default). For the backlog. Works through the bills most recently
         updated first, saves after every chunk, and publishes at the end.
 
+        catllm takes one bill at a time. For several at once, start N runs
+        with --part 0/N ... --part N-1/N and --dry-run, then publish once.
+
     python summarize_federal_bills.py --export DIR --max 60
     python summarize_federal_bills.py --import DIR/summaries.json
         For a model that reads the bills and writes the summaries itself (the
@@ -166,19 +169,28 @@ def download():
 
 
 def load_store():
-    return pd.read_parquet(STORE) if STORE.exists() else pd.DataFrame(columns=STORE_COLUMNS)
+    """Every summary kept here: the main file and the one each parallel run writes of its own."""
+    files = sorted(STORE.parent.glob(f"{STORE.stem}*.parquet"))
+    if not files:
+        return pd.DataFrame(columns=STORE_COLUMNS)
+    store = pd.concat([pd.read_parquet(path) for path in files], ignore_index=True)
+    return store.sort_values("written").drop_duplicates(["key", "text_version"], keep="last").reset_index(drop=True)
 
 
-def keep(rows, model):
-    """Add summaries to the store: `rows` is a list of (key, text_version, summary). The newest for a key and version wins."""
+def keep(rows, model, part=""):
+    """Add summaries to the store: `rows` is a list of (key, text_version, summary). The newest for a key and version wins.
+
+    A run that is one of several at once names its `part` and writes a file of its own, so none overwrites another's.
+    """
     if not rows:
         return load_store()
+    path = STORE.with_name(f"{STORE.stem}{'-' + part if part else ''}.parquet")
     written = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     fresh = pd.DataFrame([(key, version, summary, model, written) for key, version, summary in rows], columns=STORE_COLUMNS)
-    store = pd.concat([load_store(), fresh], ignore_index=True).drop_duplicates(["key", "text_version"], keep="last")
-    STORE.parent.mkdir(parents=True, exist_ok=True)
-    store.to_parquet(STORE, index=False)
-    return store
+    mine = pd.concat([pd.read_parquet(path), fresh], ignore_index=True) if path.exists() else fresh
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mine.drop_duplicates(["key", "text_version"], keep="last").to_parquet(path, index=False)
+    return load_store()
 
 
 def apply(df, store):
@@ -333,6 +345,8 @@ def main(argv=None):
     parser.add_argument("--thinking-budget", type=int, default=0, help="tokens of reasoning, for a model that takes it; 0 for none")
     parser.add_argument("--workers", type=int, default=6, help="bills summarized at once")
     parser.add_argument("--env-file", help="another .env to read the model's key from")
+    parser.add_argument("--part", metavar="K/N", help="take every Nth bill, starting at the Kth: for N runs at once (use with --dry-run, "
+                                                      "then one --publish-only)")
     parser.add_argument("--export", metavar="DIR", help="write the bills that need a summary as files, and stop")
     parser.add_argument("--import", dest="import_file", metavar="FILE", help="check and keep the summaries a model wrote")
     parser.add_argument("--dry-run", action="store_true", help="do not publish")
@@ -354,7 +368,11 @@ def main(argv=None):
         apply(df, load_store())  # what is kept here but not yet published does not need writing again
         need = needs_summary(df)
         order = pd.to_datetime(df["date_updated"], errors="coerce", utc=True)
-        todo = list(order[need].sort_values(ascending=False).index[:args.max])
+        todo = list(order[need].sort_values(ascending=False).index)
+        if args.part:
+            which, of = (int(n) for n in args.part.split("/"))
+            todo = todo[which % of::of]
+        todo = todo[:args.max]
         stale = int((need & (df["short_summary"].map(text_of).str.strip() != "")).sum())
         log.info(f"{int(need.sum())} bills need a summary ({stale} of them have one from an earlier text); taking {len(todo)}")
         if args.status:
@@ -376,7 +394,7 @@ def main(argv=None):
         for start in range(0, len(todo), CHUNK):
             good, some_refused = write_with_catllm(df, todo[start:start + CHUNK], args.model, args.model_source, api_key,
                                                    args.workers, args.thinking_budget)
-            keep(good, args.model)
+            keep(good, args.model, (args.part or "").replace("/", "of"))
             written += len(good)
             for problem, count in some_refused.items():
                 refused[problem] = refused.get(problem, 0) + count
