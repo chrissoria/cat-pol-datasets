@@ -258,3 +258,20 @@ def test_an_application_that_ends_without_a_ruling():
 def test_a_name_in_capitals_with_et_al_is_still_reset():
     assert sc.tidy_name("CHRIS SALE, ACTING COMMISSIONER, et al. v. HAITIAN CENTERS COUNCIL, INC., et al.") == \
         "Chris Sale, Acting Commissioner, et al. v. Haitian Centers Council, Inc., et al."
+
+
+def test_the_docket_gives_a_decided_case_its_disposition():
+    assert sc.ruling_in(entries(("2026-02-20", "Judgment in No. 24-1287 is VACATED and case REMANDED with instructions to dismiss; "
+                                                "the judgment in No. 25-250 is AFFIRMED."))) == ("vacated and remanded", "petitioner")
+    assert sc.ruling_in(entries(("2026-01-10", "Adjudged to be AFFIRMED."))) == ("affirmed", "respondent")
+    assert sc.ruling_in(entries(("2026-01-10", "Judgment REVERSED and case REMANDED."))) == ("reversed and remanded", "petitioner")
+    assert sc.ruling_in(entries(("2026-01-10", "Judgment AFFIRMED in part, REVERSED in part, and case REMANDED."))) == \
+        ("affirmed and reversed in part, and remanded", "")
+    assert sc.ruling_in(entries(("2026-01-10", "Writ of certiorari DISMISSED as improvidently granted."))) == ("petition denied or appeal dismissed", "")
+    assert sc.ruling_in(entries(("2025-09-22", "Motion to dispense with printing the joint appendix GRANTED."))) == ("", "")
+    assert set(sc.ruling_in(entries(("2026-01-10", "Judgment REVERSED and case REMANDED.")))[:1]) <= set(sc.DISPOSITIONS.values())
+
+
+def test_a_short_name_with_an_ampersand_stays_in_capitals():
+    assert sc.tidy_name("FEDERAL COMMUNICATIONS COMMISSION v. AT&T") == "Federal Communications Commission v. AT&T"
+    assert sc.tidy_name("JONES & LAUGHLIN STEEL CORP. v. NLRB") == "Jones & Laughlin Steel Corp. v. NLRB"

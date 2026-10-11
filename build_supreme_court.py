@@ -298,7 +298,7 @@ def tidy_name(name):
     for index, word in enumerate(name.lower().split()):
         if word in small and index:
             words.append(word)
-        elif re.fullmatch(r"(?:[a-z]\.)+,?", word) or word.rstrip(",.") in {"u.s", "usa", "llc", "nlrb", "ins", "fcc", "epa", "irs", "sec", "ftc", "icc", "ii", "iii", "iv"}:
+        elif re.fullmatch(r"(?:[a-z]\.)+,?", word) or word.rstrip(",.") in {"u.s", "usa", "llc", "nlrb", "ins", "fcc", "epa", "irs", "sec", "ftc", "icc", "ii", "iii", "iv"} or ("&" in word and len(word.rstrip(",.")) <= 5):  # AT&T
             words.append(word.upper())
         else:
             word = re.sub(r"(^|[-(/])([a-z])", lambda m: m.group(1) + m.group(2).upper(), word)
@@ -595,6 +595,29 @@ def stage_of(entries):
     return furthest, reached
 
 
+def ruling_in(entries):
+    """(disposition, winner) as a case's docket records them, in the database's words; ("", "") if it records none.
+
+    Where one entry disposes of several cases, the first ruling is the one for the docket it sits on.
+    """
+    for entry in entries:
+        text = entry["text"]
+        ruled = re.search(r"\b(AFFIRMED|REVERSED|VACATED|DISMISSED)\b", text)  # the docket sets the ruling in capitals
+        if not ruled or not _STAGES[-1][1].search(text):
+            continue
+        clause = text[ruled.start():].split(";")[0]
+        remanded = ", and remanded" if re.search(r"\bREMANDED\b", clause) else ""
+        if re.search(r"\bin part\b", clause, re.I) and "AFFIRMED" in clause and re.search(r"REVERSED|VACATED", clause):
+            return "affirmed and reversed in part" + remanded, ""
+        word = ruled.group(1).lower()
+        if word == "dismissed":
+            return "petition denied or appeal dismissed", ""
+        if word == "affirmed":
+            return "affirmed", "respondent"
+        return word + remanded.replace(", and", " and"), "petitioner"
+    return "", ""
+
+
 _KINDS = [
     ("extension of time", r"extend(?:ing)? the time|extension of time|further extend"),
     ("stay of execution", r"stay of execution"),
@@ -767,29 +790,35 @@ def refresh_dockets(tables, everything=False, workers=1):
         number = docket_number(docket) if term >= first_term else ""
         if number and (everything or stage != "decided" or decided >= recent):
             wanted[case_id] = number
-    files = fetch_many(sorted(set(wanted.values())), workers)
-    fresh, by_number = [], {}
-    for number, data in files.items():
-        if data:
-            rows = entries_of(number, data, "case")
-            by_number[number] = (stage_of(rows), data)
-            fresh.extend(rows)
-    stages = dict(zip(cases["id"], cases["stage"]))
-    updates = {name: dict(zip(cases["id"], cases[name])) for name in ("date_granted", "date_argued", "date_decided", "lower_court", "docket_url")}
+    files = {number: data for number, data in fetch_many(sorted(set(wanted.values())), workers).items() if data}
+    entries = replace_entries(entries, [row for number, data in files.items() for row in entries_of(number, data, "case")])
+    fresh = []
+    # A case the database has not coded yet is rebuilt from Oyez on every run, so what its docket adds is
+    # read from the entries held here, not only from the files fetched today.
+    for case_id, term, docket, source in zip(cases["id"], cases["term"], cases["docket"], cases["source"]):
+        if source != "scdb" and term >= first_term and docket_number(docket):
+            wanted.setdefault(case_id, docket_number(docket))
+    held = entries[(entries["kind"] == "case") & entries["docket"].isin(set(wanted.values()))].sort_values(["docket", "seq"]) if len(entries) else entries
+    by_number = {number: rows.to_dict("records") for number, rows in held.groupby("docket")} if len(held) else {}
+    names = ("stage", "date_granted", "date_argued", "date_decided", "lower_court", "docket_url", "disposition", "winner")
+    updates = {name: dict(zip(cases["id"], cases[name])) for name in names}
     for case_id, number in wanted.items():
         if number not in by_number:
             continue
-        (stage, reached), data = by_number[number]
+        stage, reached = stage_of(by_number[number])
         updates["docket_url"][case_id] = DOCKET_PAGE.format(number=number.lower())
         for column, key in (("date_granted", "granted"), ("date_argued", "argued"), ("date_decided", "decided")):
             if not updates[column][case_id] and reached.get(key):
                 updates[column][case_id] = reached[key]
-        if not updates["lower_court"][case_id]:
-            updates["lower_court"][case_id] = (data.get("LowerCourt") or "").strip()
+        if not updates["lower_court"][case_id] and number in files:
+            updates["lower_court"][case_id] = (files[number].get("LowerCourt") or "").strip()
         # The docket runs ahead of Oyez for a case in progress, never behind a decision already recorded.
-        if stages[case_id] != "decided" and stage in STAGE_ORDER and STAGE_ORDER.index(stage) >= STAGE_ORDER.index("granted"):
-            stages[case_id] = stage
-    cases = cases.assign(stage=cases["id"].map(stages), **{name: cases["id"].map(values) for name, values in updates.items()})
+        if updates["stage"][case_id] != "decided" and stage in STAGE_ORDER and STAGE_ORDER.index(stage) >= STAGE_ORDER.index("granted"):
+            updates["stage"][case_id] = stage
+        if updates["stage"][case_id] == "decided" and not updates["disposition"][case_id]:
+            updates["disposition"][case_id], won = ruling_in(by_number[number])
+            updates["winner"][case_id] = updates["winner"][case_id] or won
+    cases = cases.assign(**{name: cases["id"].map(values) for name, values in updates.items()})
 
     # Applications: the unresolved, the lately resolved, and whatever has been filed since.
     series_now = current_term() % 100
@@ -817,7 +846,7 @@ def refresh_dockets(tables, everything=False, workers=1):
 
     tables["cases"], tables["applications"] = cases, applications
     tables["docket_entries"] = replace_entries(entries, fresh).sort_values(["docket", "seq"]).reset_index(drop=True)
-    return {"case_dockets": len(by_number), "applications_read": len(found), "new_applications": len(found) - len(again)}
+    return {"case_dockets": len(files), "applications_read": len(found), "new_applications": len(found) - len(again)}
 
 
 def terms_table(tables, previous=None, count_petitions=()):
@@ -958,6 +987,12 @@ def main(argv=None):
         return 1
     write_tables(tables, out_dir)
     pushed = False if args.no_upload else upload(out_dir, args.write_card or args.base)
+    if pushed:
+        try:  # the map's files are made from the tables just written; a failure here leaves the dataset as published
+            import build_court_snapshot
+            build_court_snapshot.main(["--tables", str(out_dir)])
+        except Exception as e:
+            log.error(f"Court map files not updated: {e}")
     cases = tables["cases"]
     pending = int((cases["stage"] != "decided").sum())
     log.info(f"RESULT: supreme-court-cases cases={len(cases)} pending={pending} votes={len(tables['votes'])} "
