@@ -51,6 +51,13 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   the County's Legistar API. `--base` reads every meeting; without it, the
   recent ones. `README_sd_county.md` is the dataset's card. It is not part of a
   cloud routine yet (`docs/cloud_routine.md` says what that would take).
+- `build_san_diego.py` fills in
+  [san-diego-ordinances](https://huggingface.co/datasets/chrissoria/san-diego-ordinances),
+  the City of San Diego's ordinances and resolutions since 1970. It reads the
+  Clerk's listing three ways, because one pass of it repeats some documents
+  and hides others, and reads the text of each document: the PDF's own where
+  it has some, and OCR (Tesseract) for the scans, which is everything before
+  2021. Run by hand; `pull_san_diego.py` remains the weekly pull.
 - `build_executive_roster.py` builds
   [executive-branch-roster](https://huggingface.co/datasets/chrissoria/executive-branch-roster):
   the cabinet from Senate nominations and the senior White House staff from

@@ -99,5 +99,6 @@ Plists go to `~/Library/LaunchAgents/`. All paths are derived dynamically — re
 ## Special Cases
 
 - **Berkeley + Bakersfield** — Use Playwright to bypass Cloudflare on `municipal.codes`. Requires `playwright install chromium`.
+- **San Diego (City)** — `build_san_diego.py` is the backfill: `--list straight|years|search` reads the Clerk's listing three ways (it sorts by date only, so one pass repeats rows and hides others; the search's year counts are the true totals), and `--texts` reads each document, by OCR where a page has no text of its own. Needs `tesseract`, `pdfplumber` and `pypdfium2`. Every publish rewrites `.sd_cache.parquet`, which the weekly `pull_san_diego.py` starts from. Working files in `sandiego/`.
 - **SD County** — `build_sd_county.py` builds all six tables of `chrissoria/sd-county-ordinances` from the Legistar API (items, meetings, agenda items, votes, supervisors); `pull_sd_county.py` only calls it. Legistar uses subject-area MatterTypes, so an item is an ordinance or resolution by its title. `build_sdcounty_dataset.py` is the old one-table scraper.
 - **Truth Social** — `checkpoints/truthsocial/trump_truths.parquet` is the local checkpoint; authoritative dataset is `chrissoria/trump-truth-social` on HuggingFace. Intraday market parquets per ticker live in `checkpoints/`.
