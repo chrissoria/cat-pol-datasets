@@ -42,11 +42,14 @@ def tables():
         {**{column: "" for column in sc.APPLICATION_COLUMNS}, "docket": "25A1", "term": 2025, "title": "A v. B", "kind": "extension of time",
          "capital_case": False, "referred_to_court": False, "n_entries": 1},
         {**{column: "" for column in sc.APPLICATION_COLUMNS}, "docket": "25A2", "term": 2025, "title": "C v. D", "kind": "stay", "outcome": "granted",
-         "decided_by": "the Court", "date_filed": "2025-10-01", "date_resolved": "2025-10-09", "capital_case": False, "referred_to_court": True, "n_entries": 2},
+         "decided_by": "the Court", "date_filed": "2025-10-01", "date_resolved": "2025-10-09", "capital_case": False, "referred_to_court": True, "n_entries": 2,
+         "submitted_to": "The Chief Justice"},
     ])
     entries = pd.DataFrame([
         {"docket": "25A2", "kind": "application", "seq": 0, "date": "2025-10-01", "text": "Application (25A2) for a stay, submitted to The Chief Justice."},
         {"docket": "25A2", "kind": "application", "seq": 1, "date": "2025-10-09", "text": "Application (25A2) granted by the Court."},
+        {"docket": "25A2", "kind": "application", "seq": 2, "date": "2025-10-07", "text": "Application (25A2) referred to the Court."},
+        {"docket": "25-9", "kind": "case", "seq": 0, "date": "2025-11-05", "text": "Argued. For petitioner: A. Lawyer. For respondent: B. Counsel."},
     ])
     terms = pd.DataFrame([
         {"term": 2024, "chief_justice": "Roberts", "cases": 1, "cases_decided": 1, "applications": 0, "paid_petitions": 10, "ifp_petitions": 20},
@@ -73,6 +76,16 @@ def test_the_map_file_seats_the_justices_and_lines_up_their_votes():
 def test_routine_applications_are_counted_but_not_listed_and_the_words_go_to_term_files():
     world, texts = snapshot.build(tables())
     assert world["applications"]["docket"] == ["25A2"] and world["application_kinds"] == ["stay"]
-    assert texts[2024]["cases"]["2024-23-1"] == ["May it?", "Held: it may not."]
-    assert texts[2025]["cases"]["2025-25-9"] == ["Does it?", ""]
+    assert texts[2024]["cases"]["2024-23-1"] == ["May it?", "Held: it may not.", ""]
+    assert texts[2025]["cases"]["2025-25-9"] == ["Does it?", "", "Argued. For petitioner: A. Lawyer. For respondent: B. Counsel."]
     assert texts[2025]["applications"]["25A2"] == ["Application (25A2) for a stay, submitted to The Chief Justice.", "Application (25A2) granted by the Court."]
+
+
+def test_an_application_keeps_the_justice_it_went_to_and_the_day_it_was_referred():
+    world, _ = snapshot.build(tables())
+    applications = world["applications"]
+    names = [justice["last_name"] for justice in world["justices"]]
+    assert names[applications["submitted_to"][0]] == "Roberts"  # "The Chief Justice" is whoever held the chair that term
+    assert applications["referred_on"] == ["2025-10-07"]
+    assert snapshot.seat_of("Justice Kagan", [0, 1, 2], 1, world["justices"]) == 2
+    assert snapshot.seat_of("Justice Nobody", [0, 1, 2], 1, world["justices"]) == -1 and snapshot.seat_of("", [0], 0, world["justices"]) == -1

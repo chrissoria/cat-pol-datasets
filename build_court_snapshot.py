@@ -7,8 +7,8 @@ chrissoria/supreme-court-cases (build_supreme_court.py).
                              it stands and how the justices voted, and the
                              applications that were more than routine
   world/text/<term>.json.gz  the words for one term's cards: the question each
-                             case asked and what was held; what each application
-                             asked and how it was answered
+                             case asked, what was held and who argued it; what
+                             each application asked and how it was answered
 
 The first is read once, so it carries no long text; the second is fetched for
 the term on show. Routine applications (more time to file, a longer brief) are
@@ -91,6 +91,16 @@ def vote_letter(side, wrote, is_author):
     return ABSENT
 
 
+def seat_of(name, members, chief, bench):
+    """The seat of the justice a docket names ("Justice Kavanaugh", "The Chief Justice") among a term's members; -1 if none."""
+    if not name:
+        return -1
+    if name.lower() == "the chief justice":
+        return chief
+    last = name.split()[-1].replace("'", "").lower()
+    return next((number for number in members if bench[number]["last_name"].replace("'", "").replace("’", "").lower() == last), -1)
+
+
 def build(tables):
     """Returns the map file and {term: that term's text file}."""
     cases, votes, justices = tables["cases"], tables["votes"], tables["justices"]
@@ -141,6 +151,14 @@ def build(tables):
     kinds, decision_type = coded(cases["decision_type"])
 
     shown = applications[~applications["kind"].isin(ROUTINE)].reset_index(drop=True) if len(applications) else applications
+    chief_of = {row["term"]: row["chief"] for row in term_rows}
+    # The day each application went to the full Court, and what the docket says of each case's argument.
+    referred_on, argued_by = {}, {}
+    if len(entries):
+        referrals = entries[entries["text"].str.contains("referred to the Court", case=False, regex=False)].sort_values(["docket", "seq"])
+        referred_on = referrals.groupby("docket")["date"].first().to_dict()
+        hearings = entries[entries["text"].str.match(r"(?:Rea|A)rgued\b")].sort_values(["docket", "seq"])
+        argued_by = hearings.groupby("docket")["text"].last().to_dict()
     app_kinds, app_kind = coded(shown["kind"]) if len(shown) else ([], [])
     app_courts, app_lower = coded(shown["lower_court"]) if len(shown) else ([], [])
 
@@ -196,6 +214,9 @@ def build(tables):
             "decided_by": shown["decided_by"].tolist(),
             "resolved": shown["date_resolved"].tolist(),
             "referred": shown["referred_to_court"].astype(int).tolist(),
+            "referred_on": [referred_on.get(docket, "") if referred else "" for docket, referred in zip(shown["docket"], shown["referred_to_court"])],
+            "submitted_to": [seat_of(name, sat.get(int(term), []), chief_of.get(int(term), -1), bench)
+                             for name, term in zip(shown["submitted_to"], shown["term"])],
             "capital": shown["capital_case"].astype(int).tolist(),
             "lower_court": app_lower,
             "url": shown["url"].tolist(),
@@ -204,9 +225,11 @@ def build(tables):
 
     # The words, a file to a term.
     texts = {}
-    for term, case_id, question, description in zip(cases["term"], cases["id"], cases["question"], cases["description"]):
-        if question or description:
-            texts.setdefault(int(term), {"cases": {}, "applications": {}})["cases"][case_id] = [clipped(question, QUESTION_CHARS), clipped(description, QUESTION_CHARS)]
+    for term, case_id, docket, question, description in zip(cases["term"], cases["id"], cases["docket"], cases["question"], cases["description"]):
+        argument = argued_by.get(court.docket_number(docket), "") if int(term) >= 2000 + court.FIRST_DOCKET_SERIES else ""
+        if question or description or argument:
+            texts.setdefault(int(term), {"cases": {}, "applications": {}})["cases"][case_id] = [
+                clipped(question, QUESTION_CHARS), clipped(description, QUESTION_CHARS), clipped(argument, ENTRY_CHARS)]
     if len(shown):
         lines_of = {docket: rows.sort_values("seq") for docket, rows in entries[entries["docket"].isin(set(shown["docket"]))].groupby("docket")}
         for term, docket, resolved in zip(shown["term"], shown["docket"], shown["date_resolved"]):
