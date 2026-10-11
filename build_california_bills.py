@@ -853,6 +853,12 @@ def main(argv=None):
         return 1
     write_tables(tables, session, args.out)
     pushed = False if args.no_upload else upload(session, args.out, args.write_card)
+    if pushed:
+        try:  # the map's files are made from the tables just written; a failure here leaves the dataset as published
+            import build_california_snapshot
+            build_california_snapshot.main(["--tables", str(args.out)] + (["--session", str(args.session)] if args.session else []))
+        except Exception as e:
+            log.error(f"California map files not updated: {e}")
     found = tables["bills"]
     log.info(f"RESULT: california-bills session={session} bills={len(found)} with_text={counts['with_text']} "
              f"chaptered={int((found['status'] == 'Chaptered').sum())} actions={len(tables['actions'])} "
