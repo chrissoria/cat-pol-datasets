@@ -156,3 +156,19 @@ report it; do not fix it.
 - **Running it on a Mac.** The same command works in a checkout that has
   `../.env`. With a local cache present it uses that instead of downloading, so
   delete `.federal_bills_cache.parquet` first if the cloud has run since.
+
+## The weekly roster routine
+
+A second routine, "Executive roster · weekly", runs `python3
+build_executive_roster.py` in the same environment every Monday. It reads the
+Senate's nominations from Congress.gov and the senior White House posts from
+Wikidata, publishes `chrissoria/executive-branch-roster`, and writes
+`world/roster.json` there for the White House map.
+
+It needs write access to `chrissoria/executive-branch-roster` for the cloud
+token, and `query.wikidata.org` on the network allowlist. Without Wikidata it
+logs a WARNING and keeps the White House rows already published; the cabinet,
+which comes from Congress.gov, is still refreshed. It refuses to publish when
+it finds fewer than ten cabinet secretaries, which means the listing failed.
+It reports `RESULT: executive-branch-roster rows=… serving=… former=…
+nominated=… white_house=… pushed=…`.

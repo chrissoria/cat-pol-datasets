@@ -15,3 +15,5 @@ world/
 committees/
 # Bulk files, tables and map files of finished Congresses
 archive/
+# Local copy of the executive branch roster
+roster/
