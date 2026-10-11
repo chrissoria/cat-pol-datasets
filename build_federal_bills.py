@@ -544,12 +544,13 @@ def select_bills_to_fetch(all_bills, existing, max_bills=None):
     return ordered
 
 
-def hf_write_problem():
+def hf_write_problem(repo_id=None):
     """Return why the token cannot write to the dataset, or None if it looks able to.
 
     Checked before fetching, because a push refused at the end wastes the whole run.
     Only a clear answer stops the run; an unfamiliar response lets it proceed.
     """
+    repo_id = repo_id or HF_REPO
     try:
         from huggingface_hub import HfApi
         info = HfApi(token=HF_TOKEN).whoami()
@@ -560,14 +561,14 @@ def hf_write_problem():
         return "the token is read-only"
     scoped = (token.get("fineGrained") or {}).get("scoped")
     if token.get("role") == "fineGrained" and scoped:
-        owner = HF_REPO.split("/")[0]
+        owner = repo_id.split("/")[0]
         granted = set()
         for scope in scoped:
             entity = scope.get("entity") or {}
-            if entity.get("name") in (HF_REPO, owner):
+            if entity.get("name") in (repo_id, owner):
                 granted |= set(scope.get("permissions") or [])
         if "repo.write" not in granted:
-            return (f"the fine-grained token has no write permission on {HF_REPO} "
+            return (f"the fine-grained token has no write permission on {repo_id} "
                     f"(it has: {sorted(granted) or 'nothing for this repo'})")
     return None
 
@@ -1009,6 +1010,15 @@ def main():
             build_committees.main(["--max-minutes", "10"])
         except Exception as e:
             log.warning(f"Committee tables not updated: {e}")
+
+    # Executive orders are a separate dataset from a separate source (the Federal Register),
+    # so they are brought up to date whether or not the bills were pushed. Never fatal.
+    if not args.dry_run:
+        try:
+            import update_executive_orders
+            update_executive_orders.main([])
+        except Exception as e:
+            log.warning(f"Executive orders not updated: {e}")
 
     log.info(f"RESULT: federal-bills fetched={len(new_df)} total={len(combined)} pushed={pushed}")
     log.info("Done.")

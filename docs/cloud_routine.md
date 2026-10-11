@@ -51,6 +51,16 @@ for the map. That step is capped at ten minutes and never fails the run. The
 cloud token needs write access to `chrissoria/federal-committees` as well; without
 it the tables are skipped with a logged error and only the map file is updated.
 
+Last, the run brings `chrissoria/executive-orders` up to date
+(`update_executive_orders.py`): it lists the Federal Register's executive
+orders, adds the ones signed since the last run with their text, and publishes.
+This step needs `www.federalregister.gov` on the environment's network
+allowlist and write access to `chrissoria/executive-orders` for the cloud
+token. Without either it logs an ERROR line saying which, and the rest of the
+run is unaffected. It reports `RESULT: executive-orders total=… new=…
+newest=… pushed=…`, and it never publishes a table shorter than the one
+already there.
+
 ## 2. Guards
 
 The script stops with exit 1, saving and pushing nothing, when:

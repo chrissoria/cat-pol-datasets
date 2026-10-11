@@ -14,6 +14,10 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   and [federal-votes](https://huggingface.co/datasets/chrissoria/federal-votes).
 - `docs/cloud_routine.md` describes the daily cloud run that keeps
   federal-bills-active current.
+- `update_executive_orders.py` keeps
+  [executive-orders](https://huggingface.co/datasets/chrissoria/executive-orders)
+  current from the Federal Register. It runs at the end of the daily bills run;
+  `README_executive_orders.md` is the dataset's card.
 - `build_congress_archive.py` builds the map files of a finished Congress
   (2003 on) from GovInfo's Bill Status bulk data, once, and uploads them to
   `world/archive/<congress>/`. It is run by hand, not by the daily job:
