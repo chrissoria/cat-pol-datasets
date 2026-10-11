@@ -25,7 +25,7 @@ Use `--dry-run` before any job that writes checkpoints or pushes to Hugging Face
 Follow existing Python style: 4-space indentation, standard-library imports first, short module docstrings, and clear constant names in `UPPER_SNAKE_CASE`. Name new entrypoint scripts with verb-first patterns such as `build_city_dataset.py` or `update_source.py`. Prefer `pathlib.Path`, keep side effects inside `main()` or clearly named functions, and write logs to `logs/` instead of printing large progress traces.
 
 ## Testing Guidelines
-There is no dedicated `tests/` suite or configured `pytest` target in this workspace. Validate changes by running the affected script with `--dry-run` and checking generated log output in `logs/`. For scraper changes, verify both a narrow run (single source) and any checkpoint path the script reads or writes.
+The dataset builders have unit tests in `tests/`; run `python -m pytest tests -q`. For the scrapers, which have none, validate changes by running the affected script with `--dry-run` and checking generated log output in `logs/`. For scraper changes, verify both a narrow run (single source) and any checkpoint path the script reads or writes.
 
 ## Commit & Pull Request Guidelines
 Git history is not available in this checkout, so use simple imperative commit messages such as `Add dry-run guard for federal bill updates`. Keep commits scoped to one script or workflow. PRs should state the data source affected, list commands run for verification, mention any new environment variables, and include sample output or log excerpts when behavior changes.

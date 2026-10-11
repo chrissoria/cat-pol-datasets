@@ -242,3 +242,19 @@ def test_a_host_that_refuses_is_not_a_missing_file(monkeypatch):
     monkeypatch.setattr(sc.requests, "get", lambda *a, **k: Answer(403))
     with pytest.raises(sc.Unreachable):
         sc.get_json("https://example.org/x.json")
+
+
+def test_an_application_that_ends_without_a_ruling():
+    row, _ = sc.application_row("17A145", docket_file(
+        ("Jul 31 2017", "Application (17A145) for a stay of execution of sentence of death, submitted to Justice Alito."),
+        ("Aug 21 2017", "Application (17A145) completed.")))
+    assert (row["kind"], row["outcome"], row["decided_by"], row["date_resolved"]) == ("stay of execution", "closed", "", "2017-08-21")
+    row, _ = sc.application_row("17A655", docket_file(
+        ("Dec 18 2017", "Application (17A655) for a stay pending appeal, submitted to The Chief Justice."),
+        ("Dec 19 2017", "Letter of December 19, 2017 withdrawing the application for a stay pending appeal filed by applicant.")))
+    assert (row["outcome"], row["decided_by"]) == ("withdrawn", "")
+
+
+def test_a_name_in_capitals_with_et_al_is_still_reset():
+    assert sc.tidy_name("CHRIS SALE, ACTING COMMISSIONER, et al. v. HAITIAN CENTERS COUNCIL, INC., et al.") == \
+        "Chris Sale, Acting Commissioner, et al. v. Haitian Centers Council, Inc., et al."

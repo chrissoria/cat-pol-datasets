@@ -17,6 +17,6 @@ committees/
 archive/
 # Local copies of the executive branch roster and the members of Congress
 roster/
+members/
 # Local copy of the Supreme Court tables and the files they are built from
 scotus/
-members/

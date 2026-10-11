@@ -179,7 +179,7 @@ the emergency docket.
 | `date_filed` | The date of the first docket entry. |
 | `submitted_to` | The justice it went to. |
 | `referred_to_court` | True if that justice referred it to the full Court. |
-| `outcome` | `granted`, `granted in part`, `denied`, `dismissed` or `withdrawn`; empty while pending, or where the docket's wording was not recognised. |
+| `outcome` | `granted`, `granted in part`, `denied`, `dismissed`, `withdrawn`, or `closed` (the docket ends with no ruling, usually because events overtook the request); empty while pending, or where the docket's wording was not recognised. |
 | `decided_by` | The justice who ruled, or `the Court`. |
 | `date_resolved` | The date of that ruling. |
 | `lower_court`, `lower_court_case` | Where it came from. |

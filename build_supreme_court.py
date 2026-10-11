@@ -290,9 +290,9 @@ def scdb_cases(path):
 
 def tidy_name(name):
     """ "LEARNING RESOURCES, INC. v. TRUMP" as "Learning Resources, Inc. v. Trump"."""
-    letters = re.sub(r"\bv\.", "", name)
-    if letters != letters.upper():
-        return name  # already in mixed case
+    capitals, small_letters = sum(ch.isupper() for ch in name), sum(ch.islower() for ch in name)
+    if small_letters > capitals * 0.3:
+        return name  # already in mixed case; "v." and "et al." in a name set in capitals do not make it so
     small = {"v.", "of", "the", "and", "for", "in", "on", "et", "al.", "ex", "rel.", "de", "la", "a", "to"}
     words = []
     for index, word in enumerate(name.lower().split()):
@@ -613,7 +613,10 @@ _RULINGS = [
     re.compile(rf"referred to the Court,? (?:is |are )?{_RULING}\b", re.I),
     re.compile(rf"\b(?:application|motion)[^.]{{0,160}}\b(?:is|are) {_RULING}\b", re.I),
     re.compile(r"^Application(?: \([^)]+\))?[^.]{0,60}\b(withdrawn)\b", re.I),
+    re.compile(r"\b(withdraw)(?:ing|s)? the application", re.I),
+    re.compile(r"^Application(?: \([^)]+\))? (completed|closed)\b", re.I),  # ended with no ruling: overtaken by events
 ]
+_OUTCOME_WORDS = {"withdraw": "withdrawn", "completed": "closed"}
 
 
 def application_row(number, data):
@@ -634,9 +637,10 @@ def application_row(number, data):
             continue  # a filing, whatever it says about the order it complains of
         verdict = next((found for found in (pattern.search(text) for pattern in _RULINGS) if found), None)
         if verdict:
-            outcome = verdict.group(1).lower()
+            outcome = _OUTCOME_WORDS.get(verdict.group(1).lower(), verdict.group(1).lower())
             by = re.search(rf"{re.escape(verdict.group(1))} by ({_JUSTICE}|the Court)", text, re.I)
-            decided_by = by.group(1) if by else "the Court" if referred or "the Court" in text else ""
+            ruled = outcome not in ("withdrawn", "closed")
+            decided_by = by.group(1) if by else "the Court" if ruled and (referred or "the Court" in text) else ""
             resolved = entry["date"]
     applicant = re.sub(r",?\s*(?:et al\.,?\s*)?Applicants?$", lambda m: ", et al." if "et al" in m.group(0) else "", data.get("PetitionerTitle") or "").strip()
     respondent = (data.get("RespondentTitle") or "").strip()
