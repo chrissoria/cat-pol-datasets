@@ -81,6 +81,28 @@ def people(justices, votes):
     return sorted(rows, key=lambda row: row["start"])
 
 
+def everyone(justices):
+    """Every justice there has been, one entry each, oldest first: for the roster of the retired and the plaques of the dead."""
+    rows = []
+    for justice_id, held in justices.groupby("justice_id", sort=False):
+        held = held.sort_values("start")
+        first, last = held.iloc[0], held.iloc[-1]
+        chief = held[held["title"] == "Chief Justice"]
+        rows.append({
+            "id": justice_id,
+            "name": last["name"],
+            "last_name": last["last_name"],
+            "appointed_by": first["appointed_by"],
+            "start": first["start"],
+            "end": last["end"],
+            "chief_from": chief["start"].iloc[0] if len(chief) else "",
+            "how_ended": last["how_ended"],
+            "born": last["born"],
+            "died": last["died"],
+        })
+    return sorted(rows, key=lambda row: row["start"])
+
+
 def vote_letter(side, wrote, is_author):
     if is_author:
         return WROTE_FOR_COURT
@@ -169,6 +191,7 @@ def build(tables):
         "data_through": min(data_through, court.today()),  # a docket can carry the date of a hearing still to come
         "current_term": court.current_term(),
         "justices": bench,
+        "history": everyone(justices),
         "terms": term_rows,
         "dispositions": dispositions,
         "issue_areas": areas,

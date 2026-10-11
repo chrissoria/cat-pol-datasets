@@ -343,7 +343,8 @@ def justices_table(csv_path, scdb_names):
             last = re.sub(r"[^A-Za-z]", "", person["Last Name"])
             # A justice who retires takes senior status rather than leaving the bench outright.
             retired = iso(person.get(f"Senior Status Date ({slot})"))
-            ended = iso(person.get(f"Termination Date ({slot})")) or retired
+            # The directory's termination date for a retired justice is the day they died; the bench was left earlier.
+            ended = retired or iso(person.get(f"Termination Date ({slot})"))
             # The database's name ends in the surname and starts with the first initial; two justices
             # can share both (the Harlans), so the one who sat after 1946 is the one it means.
             matches = [name for name in scdb_names
@@ -363,7 +364,7 @@ def justices_table(csv_path, scdb_names):
                 "senate_vote": person.get(f"Ayes/Nays ({slot})", ""),
                 "start": iso(person.get(f"Commission Date ({slot})")) or iso(person.get(f"Recess Appointment Date ({slot})")),
                 "end": ended,
-                "how_ended": person.get(f"Termination ({slot})", "") or ("Retirement" if retired else ""),
+                "how_ended": "Retirement" if retired else person.get(f"Termination ({slot})", ""),
                 "serving": not ended,
                 "born": person["Birth Year"],
                 "died": person["Death Year"],

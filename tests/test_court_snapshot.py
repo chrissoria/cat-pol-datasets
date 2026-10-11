@@ -32,7 +32,7 @@ def tables():
 
     def justice(justice_id, last, start, title="Associate Justice", serving=True):
         return {"justice_id": justice_id, "name": f"First {last}", "last_name": last, "title": title, "appointed_by": "A President",
-                "appointing_party": "Party", "start": start, "end": "" if serving else "2020-01-01", "serving": serving, "born": "1950", "senate_vote": "60/40"}
+                "appointing_party": "Party", "start": start, "end": "" if serving else "2020-01-01", "serving": serving, "born": "1950", "died": "", "how_ended": "" if serving else "Retirement", "senate_vote": "60/40"}
 
     justices = pd.DataFrame([
         justice("CThomas", "Thomas", "1991-10-18"), justice("JGRoberts", "Roberts", "2005-09-29", "Chief Justice"),
@@ -89,3 +89,10 @@ def test_an_application_keeps_the_justice_it_went_to_and_the_day_it_was_referred
     assert applications["referred_on"] == ["2025-10-07"]
     assert snapshot.seat_of("Justice Kagan", [0, 1, 2], 1, world["justices"]) == 2
     assert snapshot.seat_of("Justice Nobody", [0, 1, 2], 1, world["justices"]) == -1 and snapshot.seat_of("", [0], 0, world["justices"]) == -1
+
+
+def test_every_justice_is_listed_once_for_the_roster_and_the_plaques():
+    world, _ = snapshot.build(tables())
+    history = {person["id"]: person for person in world["history"]}
+    assert list(history) == ["OldOne", "CThomas", "JGRoberts", "EKagan"]  # oldest first, and those with no vote on record too
+    assert history["OldOne"]["end"] == "2020-01-01" and history["JGRoberts"]["chief_from"] == "2005-09-29"
