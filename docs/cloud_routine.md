@@ -190,3 +190,34 @@ which comes from Congress.gov, is still refreshed. It refuses to publish when
 it finds fewer than ten cabinet secretaries, which means the listing failed.
 It reports `RESULT: executive-branch-roster rows=… serving=… former=…
 nominated=… white_house=… pushed=…`.
+
+## The weekly members routine (proposed, not yet created)
+
+`python3 build_congress_members.py` builds `chrissoria/congress-members`:
+everyone who has served in Congress (`members`), every term (`terms`), and
+`world/members.json` for the member card in Capitol World. It can be a second
+command in the weekly roster routine or a routine of its own, in the same
+environment.
+
+Weekly is enough. The table changes when a member is sworn in, leaves, changes
+party or moves office, which happens a few times a month at most, and the
+source is itself updated by hand a few days after the event. A run takes about
+fifteen seconds and makes fewer than ten requests.
+
+It needs:
+
+- write access to `chrissoria/congress-members` for the cloud token. A
+  fine-grained token cannot create the repository, so create it first, or make
+  the first run from a Mac with `--write-card`;
+- on the network allowlist, `unitedstates.github.io` (the legislators files;
+  `raw.githubusercontent.com` is tried if it fails) and `history.house.gov`
+  (the Historian's three lists, for `race_ethnicity`).
+
+It does not use the Congress.gov key. Without `history.house.gov` it logs a
+WARNING and keeps the `race_ethnicity` values already published; everything
+else is still refreshed. It refuses to publish when the number of people
+listed as serving is outside 500 to 541, when a person appears twice, or when
+the table is shorter than the one published. It reports `RESULT:
+congress-members members=… serving=… terms=… with_website=… race_listed=…
+app_members=… pushed=…`. The dataset card is uploaded on the first run and
+after that only with `--write-card`.
