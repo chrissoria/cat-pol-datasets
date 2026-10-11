@@ -58,6 +58,10 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   and hides others, and reads the text of each document: the PDF's own where
   it has some, and OCR (Tesseract) for the scans, which is everything before
   2021. Run by hand; `pull_san_diego.py` remains the weekly pull.
+- `build_chamber_snapshot.py` writes `world/chamber.json.gz` beside a local
+  body's dataset: the members, items, meetings and votes in the one file
+  Capitol World reads for a county board's or a city council's room. It runs
+  whenever the San Diego County tables are published.
 - `build_executive_roster.py` builds
   [executive-branch-roster](https://huggingface.co/datasets/chrissoria/executive-branch-roster):
   the cabinet from Senate nominations and the senior White House staff from

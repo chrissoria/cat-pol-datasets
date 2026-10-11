@@ -537,6 +537,12 @@ def main(argv=None):
         return 1
     write_tables(tables, out_dir)
     pushed = False if args.no_upload else upload(out_dir, args.write_card)
+    if pushed:  # the file Capitol World reads for the Board's chamber is made from these tables; never fatal
+        try:
+            import build_chamber_snapshot
+            build_chamber_snapshot.main(["--tables", str(out_dir), "--out", str(out_dir)])
+        except Exception as e:
+            log.error(f"Chamber file not updated: {type(e).__name__}: {e}")
     items = tables["items"]
     log.info(f"RESULT: sd-county items={len(items)} ordinances={int((items['doc_type'] == 'ordinance').sum())} "
              f"resolutions={int((items['doc_type'] == 'resolution').sum())} with_text={counts['with_text']} "
