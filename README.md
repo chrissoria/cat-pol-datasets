@@ -29,6 +29,11 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   [executive-branch-roster](https://huggingface.co/datasets/chrissoria/executive-branch-roster):
   the cabinet from Senate nominations and the senior White House staff from
   Wikidata. It has its own weekly cloud routine (`docs/cloud_routine.md`).
+- `build_congress_members.py` builds congress-members (not yet published):
+  everyone who has served in Congress and every term, from the public-domain
+  congress-legislators project, with race or ethnicity only where the House
+  Historian's lists give it. It also writes `world/members.json` for the member
+  card in Capitol World. `README_congress_members.md` is the dataset's card.
 - `build_congress_archive.py` builds the map files of a finished Congress
   (2003 on) from GovInfo's Bill Status bulk data, once, and uploads them to
   `world/archive/<congress>/`. It is run by hand, not by the daily job:
