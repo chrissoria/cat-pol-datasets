@@ -275,3 +275,23 @@ def test_the_docket_gives_a_decided_case_its_disposition():
 def test_a_short_name_with_an_ampersand_stays_in_capitals():
     assert sc.tidy_name("FEDERAL COMMUNICATIONS COMMISSION v. AT&T") == "Federal Communications Commission v. AT&T"
     assert sc.tidy_name("JONES & LAUGHLIN STEEL CORP. v. NLRB") == "Jones & Laughlin Steel Corp. v. NLRB"
+
+
+def test_the_daily_run_carries_on_when_one_source_is_out_of_reach(monkeypatch):
+    held = {name: pd.DataFrame() for name in sc.TABLES}
+    held["cases"] = pd.DataFrame({"id": ["2024-1"], "source": ["scdb"]})
+    held["applications"] = pd.DataFrame({"docket": ["25A1"]})
+    monkeypatch.setattr(sc, "read_published", lambda: {name: table.copy() for name, table in held.items()})
+    monkeypatch.setattr(sc, "terms_table", lambda tables, previous=None, count_petitions=(): pd.DataFrame())
+
+    def refuse(*args, **kwargs):
+        raise sc.Unreachable("api.oyez.org: ProxyError")
+
+    monkeypatch.setattr(sc, "refresh_live", refuse)
+    monkeypatch.setattr(sc, "refresh_dockets", lambda tables, **kwargs: {"case_dockets": 0})
+    tables, reached = sc.build_daily()
+    assert reached == {"oyez": "unreachable", "dockets": "ok"} and len(tables["cases"]) == 1
+
+    monkeypatch.setattr(sc, "refresh_live", lambda tables: 0)
+    monkeypatch.setattr(sc, "refresh_dockets", refuse)
+    assert sc.build_daily()[1] == {"oyez": "ok", "dockets": "unreachable"}

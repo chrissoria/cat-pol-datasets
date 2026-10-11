@@ -920,14 +920,19 @@ def build_base(raw_dir, workers):
     counts = refresh_dockets(tables, everything=True, workers=workers)
     log.info(f"Dockets: {counts}")
     tables["terms"] = terms_table(tables, count_petitions=range(FIRST_DOCKET_SERIES, current_term() % 100 + 1))
-    return tables, "ok"
+    return tables, {"oyez": "ok", "dockets": "ok"}
 
 
 def build_daily():
     tables = read_published()
     before = {name: len(table) for name, table in tables.items()}
-    refresh_live(tables)
-    dockets = "ok"
+    reached = {"oyez": "ok", "dockets": "ok"}
+    try:
+        refresh_live(tables)
+    except Unreachable as e:
+        # Without Oyez the cases of the term in progress stay as last published; their dockets can still move them on.
+        log.error(f"Oyez not read ({e}); the cases of the term in progress are as of the last run that reached it")
+        reached["oyez"] = "unreachable"
     try:
         counts = refresh_dockets(tables)
         log.info(f"Dockets: {counts}")
@@ -936,12 +941,12 @@ def build_daily():
     except Unreachable as e:
         # The Court's site turns some networks away. Oyez still tells us what was argued and decided.
         log.error(f"Docket files not read ({e}); stages and applications are as of the last run that reached them")
-        dockets = "unreachable"
+        reached["dockets"] = "unreachable"
         tables["terms"] = terms_table(tables, tables["terms"])
     settled = int((tables["cases"]["source"] == "scdb").sum())
     if settled < before["cases"] * 0.9 or len(tables["applications"]) < before["applications"] * 0.98:
         raise RuntimeError("the rebuilt tables are smaller than the published ones; not publishing")
-    return tables, dockets
+    return tables, reached
 
 
 def write_tables(tables, out_dir):
@@ -982,7 +987,7 @@ def main(argv=None):
 
     out_dir = Path(args.out)
     try:
-        tables, dockets = build_base(Path(args.raw), args.workers) if args.base else build_daily()
+        tables, reached = build_base(Path(args.raw), args.workers) if args.base else build_daily()
     except Exception as e:
         log.error(f"Supreme Court tables not built: {e}")
         return 1
@@ -998,7 +1003,7 @@ def main(argv=None):
     pending = int((cases["stage"] != "decided").sum())
     log.info(f"RESULT: supreme-court-cases cases={len(cases)} pending={pending} votes={len(tables['votes'])} "
              f"applications={len(tables['applications'])} docket_entries={len(tables['docket_entries'])} "
-             f"dockets={dockets} pushed={pushed}")
+             f"oyez={reached['oyez']} dockets={reached['dockets']} pushed={pushed}")
     return 0 if args.no_upload or pushed else 1
 
 

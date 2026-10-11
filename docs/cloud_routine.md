@@ -67,10 +67,14 @@ rebuilds the cases of the term in progress from Oyez, reads the Court's docket
 for cases still pending, and picks up applications that are new or unresolved.
 This step needs `api.oyez.org` and `www.supremecourt.gov` on the network
 allowlist and write access to `chrissoria/supreme-court-cases` for the cloud
-token. The Court's site turns some networks away; if it does not answer, the
-step still publishes what Oyez gave it and says so. It reports `RESULT:
-supreme-court-cases cases=… pending=… votes=… applications=…
-docket_entries=… dockets=ok|unreachable pushed=…`. `dockets=unreachable` on
+token. Either source can be out of reach without stopping the other: if Oyez
+does not answer, the cases of the term in progress stay as last published and
+their dockets still move them on; if the Court's site does not answer (it
+turns some networks away), the step publishes what Oyez gave it. It reports
+`RESULT: supreme-court-cases cases=… pending=… votes=… applications=…
+docket_entries=… oyez=ok|unreachable dockets=ok|unreachable pushed=…`. A
+`ProxyError` beside either name means the host is not on the allowlist.
+`dockets=unreachable` on
 every run means the docket half has to be run from a machine the Court's site
 accepts (`python build_supreme_court.py`, by hand or on a local schedule).
 
