@@ -28,8 +28,8 @@ def tables():
         {"item_id": "101", "meeting_id": "2", "date": "2026-10-07", "sequence": 1, "agenda_number": "1", "matter_id": "11", "action": "", "result": "", "ayes": 0, "noes": 0},
     ])
     votes = pd.DataFrame([
-        {"item_id": "100", "supervisor": "Ann Lee", "vote": "AYE"}, {"item_id": "100", "supervisor": "Bo Diaz", "vote": "NO"},
-        {"item_id": "100", "supervisor": "Cy Old", "vote": "AYE"}, {"item_id": "100", "supervisor": "Someone Unlisted", "vote": "AYE"},
+        {"item_id": "100", "member": "Ann Lee", "vote": "AYE"}, {"item_id": "100", "member": "Bo Diaz", "vote": "NO"},
+        {"item_id": "100", "member": "Cy Old", "vote": "AYE"}, {"item_id": "100", "member": "Someone Unlisted", "vote": "AYE"},
     ])
     supervisors = pd.DataFrame([
         {"name": "Cy Old", "district": 1, "start": "2017-01-01", "end": "2026-09-30", "role": "Member", "serving": False, "first_vote": "2017-06-20", "last_vote": "2026-09-16", "votes": 900},
@@ -76,12 +76,6 @@ def test_someone_who_held_two_seats_is_one_person_in_the_later_seat():
     members = chamber.build(given, today="2026-10-11")["members"]
     bo = [m for m in members if m["id"] == "bo-diaz"]
     assert len(bo) == 1 and bo[0]["seat"] == 2 and bo[0]["serving"] and bo[0]["start"] == "2019-01-08" and bo[0]["role"] == "Chair"
-
-
-def test_votes_are_read_whether_the_table_names_a_supervisor_or_a_member():
-    given = tables()
-    given["votes"] = given["votes"].rename(columns={"supervisor": "member"})
-    assert chamber.build(given, today="2026-10-11")["agenda"]["votes"] == ["", "ANA"]
 
 
 def test_a_family_name_is_the_last_word_unless_one_is_given():

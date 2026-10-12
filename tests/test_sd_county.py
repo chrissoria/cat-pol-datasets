@@ -92,7 +92,7 @@ def test_a_meeting_gives_its_items_their_votes_and_their_papers(monkeypatch):
     acted = agenda[0]
     assert (acted["agenda_number"], acted["result"], acted["ayes"], acted["noes"], acted["not_voting"]) == ("4", "Pass", 3, 1, 1)
     assert acted["title"] == "Adopt the Regional Fuel Contingency Plan" and acted["date"] == "2026-09-15"
-    assert [(vote["supervisor"], vote["vote"]) for vote in votes][1] == ("Joel Anderson", "NOE")
+    assert [(vote["member"], vote["vote"]) for vote in votes][1] == ("Joel Anderson", "NO")
     assert papers == {"8752": [{"name": "Board Letter", "url": PAPERS[1]["url"]}], "8760": []}
 
 
@@ -131,8 +131,8 @@ def test_a_supervisor_is_given_the_district_the_source_leaves_out():
         {"OfficeRecordFullName": "A Clerk", "OfficeRecordTitle": "Clerk", "OfficeRecordBodyName": "BOARD OF SUPERVISORS",
          "OfficeRecordStartDate": "2017-01-01T00:00:00", "OfficeRecordEndDate": None, "OfficeRecordMemberType": "Staff"},
     ]
-    votes = pd.DataFrame({"supervisor": ["Jim Desmond", "Jim Desmond", "Someone Else"], "date": ["2019-01-08", "2026-10-07", "2020-01-01"]})
-    table = sd.supervisors_table(records, votes)
+    votes = pd.DataFrame({"member": ["Jim Desmond", "Jim Desmond", "Someone Else"], "date": ["2019-01-08", "2026-10-07", "2020-01-01"]})
+    table = sd.members_table(records, votes)
     assert list(table["name"]) == ["Greg Cox", "Jim Desmond"] and list(table["district"]) == [1, 5]
     assert list(table["serving"]) == [False, True]
     # The record holds his current term; his votes show he was there four years earlier.

@@ -49,7 +49,7 @@
     "url": "https://sdcounty.legistar.com/",
     "since": "June 2017",
     "world": "chamber",
-    "chamber": {"repo": "chrissoria/sd-county-ordinances", "folder": "sdcounty", "members": "supervisors"},
+    "chamber": {"repo": "chrissoria/sd-county-ordinances", "folder": "sdcounty", "members": "members"},
     "surnames": {"Monica Montgomery Steppe": "Montgomery Steppe"},
     "datasets": [
       {"repo": "chrissoria/sd-county-ordinances", "records": "data/items.parquet", "what": "items", "date": "date",
@@ -70,7 +70,7 @@
     "url": "https://sandiego.hylandcloud.com/211agendaonlinecouncil",
     "since": "January 2010",
     "world": "chamber",
-    "chamber": {"repo": "chrissoria/san-diego-council", "folder": "sdcouncil", "members": "council"},
+    "chamber": {"repo": "chrissoria/san-diego-council", "folder": "sdcouncil", "members": "members"},
     "surnames": {"Marni von Wilpert": "von Wilpert", "Henry L. Foster III": "Foster", "Monica Montgomery Steppe": "Montgomery Steppe"},
     "datasets": [
       {"repo": "chrissoria/san-diego-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"},

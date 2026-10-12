@@ -65,6 +65,26 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   agenda gives who held each district; the Clerk's results summary gives the
   vote by district. `--base` reads every meeting; without it, the last 120
   days. `README_sd_council.md` is the card.
+- `build_legistar_council.py` builds a dataset of the same kind for each city
+  whose council keeps its record in Legistar: `oakland-council`,
+  `long-beach-council`, `fresno-council` and `salinas-council`. It reads the
+  city's API with the County builder's own functions; what differs from one
+  city to the next is a line in its `CITIES`. `--city` says which, and `--base`
+  reads every meeting. `README_legistar_council.md` is the one card, with each
+  city's name and counts written in when it is published.
+- `build_berkeley.py` keeps
+  [berkeley-ordinances](https://huggingface.co/datasets/chrissoria/berkeley-ordinances)
+  from the Berkeley City Clerk's Records Online, which lists every ordinance
+  since 1916 with the day it was adopted and a scan of it, and answers an
+  ordinary request. A plain run gives each ordinance the Clerk's day and adds
+  those passed since; `--texts` reads the scans by OCR. It replaces
+  `build_berkeley_dataset.py`, which read the municipal code's table of
+  enactments through a browser to get past a bot check.
+- `council_tables.py` is the one shape those three builders write: five tables
+  (`items`, `meetings`, `agenda_items`, `votes`, `members`), each with the same
+  columns first and a body's own after them, and one spelling of aye and no.
+  A new council or board is written to it, so any two can be set one on the
+  other.
 - `build_places.py` builds
   [us-places](https://huggingface.co/datasets/chrissoria/us-places), the one
   place everything else reads what a place is from: one row for the country

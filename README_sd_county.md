@@ -31,10 +31,10 @@ configs:
   data_files:
   - split: train
     path: data/votes.parquet
-- config_name: supervisors
+- config_name: members
   data_files:
   - split: train
-    path: data/supervisors.parquet
+    path: data/members.parquet
 ---
 
 # San Diego County Board of Supervisors
@@ -51,7 +51,7 @@ items = load_dataset("chrissoria/sd-county-ordinances", "items", split="train") 
 meetings = load_dataset("chrissoria/sd-county-ordinances", "meetings", split="train")
 agenda_items = load_dataset("chrissoria/sd-county-ordinances", "agenda_items", split="train")
 votes = load_dataset("chrissoria/sd-county-ordinances", "votes", split="train")
-supervisors = load_dataset("chrissoria/sd-county-ordinances", "supervisors", split="train")
+members = load_dataset("chrissoria/sd-county-ordinances", "members", split="train")
 ```
 
 ## Where it comes from
@@ -76,6 +76,13 @@ Until October 2026 this dataset was one table of ordinances and resolutions
 and had stopped in May. It is now six tables. The default one, `ordinances`,
 is that table continued, with the same ten columns first and more after them.
 `items` has the same columns for everything filed, whatever kind.
+
+Later that month the other five tables were given the shape every council and
+board dataset made this way has, so two can be set one on the other
+([san-diego-council](https://huggingface.co/datasets/chrissoria/san-diego-council)
+is another). The table `supervisors` became `members`, the column `supervisor`
+in `votes` became `member`, and in each of the five the shared columns now come
+first, with the County's own after them. Nothing was removed.
 
 ## `ordinances` and `items`
 
@@ -146,10 +153,10 @@ One row per supervisor and item acted on.
 |---|---|
 | `item_id`, `meeting_id`, `date` | The item at the meeting. |
 | `matter_id`, `matter_file` | The item. |
-| `supervisor` | The name. |
-| `vote` | `AYE`, `NOE`, `ABSENT`, `ABSTAIN`, `RECUSED` and the like, in the minutes' words. |
+| `member` | The supervisor's name. |
+| `vote` | `AYE` or `NO`, or the minutes' own word in capitals: `ABSENT`, `NOT PRESENT`, `ABSTAIN`, `RECUSED`, `NON-VOTING`. |
 
-## `supervisors`
+## `members`
 
 One row per supervisor's time on the Board, as the system records it.
 

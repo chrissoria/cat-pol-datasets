@@ -45,7 +45,8 @@ BODIES = bodies.chambers()
 PLAIN_ROLES = ("Member", "Councilmember", "Supervisor")  # a role that says no more than that the person sits on the body
 
 # One letter for each way a member's vote is recorded; "-" where the record has none for them.
-VOTE_LETTERS = {"AYE": "A", "NO": "N", "ABSENT": "X", "NOT PRESENT": "X", "RECUSED": "R", "ABSTAIN": "S", "NON-VOTING": "V"}
+VOTE_LETTERS = {"AYE": "A", "NO": "N", "ABSENT": "X", "NOT PRESENT": "X", "EXCUSED": "X", "RECUSED": "R", "ABSTAIN": "S",
+                "NON-VOTING": "V"}
 RESULT_LETTERS = {"Pass": "P", "Fail": "F"}
 
 
@@ -94,8 +95,7 @@ def votes_by_item(votes, members):
     """For each agenda entry, one letter per member."""
     seat = {member["name"]: index for index, member in enumerate(members)}
     cast = {}
-    names = votes["supervisor"] if "supervisor" in votes.columns else votes["member"]
-    for item_id, name, vote in zip(votes["item_id"], names, votes["vote"]):
+    for item_id, name, vote in zip(votes["item_id"], votes["member"], votes["vote"]):
         if name not in seat:
             continue
         letters = cast.setdefault(item_id, ["-"] * len(members))

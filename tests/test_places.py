@@ -36,7 +36,7 @@ BODIES = [
     {"id": "ca-legislature", "place": "06", "name": "California State Legislature", "body": "Legislature", "world": "california",
      "datasets": [{"repo": "x/bills", "records": "", "what": "bills", "date": "date"}]},
     {"id": "sd-council", "place": "0666000", "name": "San Diego City Council", "body": "City Council", "short": "the Council", "member": "Councilmember",
-     "world": "chamber", "chamber": {"repo": "x/council", "folder": "sdcouncil", "members": "council"},
+     "world": "chamber", "chamber": {"repo": "x/council", "folder": "sdcouncil", "members": "members"},
      "datasets": [{"repo": "x/ordinances", "records": "", "what": "ordinances and resolutions", "date": "date"},
                   {"repo": "x/council", "records": "", "what": "items", "date": "date"}]},
     {"id": "nowhere-council", "place": "0699999", "name": "Nowhere City Council", "body": "City Council",

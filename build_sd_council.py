@@ -24,7 +24,7 @@ Tables, in data/:
   meetings.parquet      one row per meeting that has a results summary
   agenda_items.parquet  one row per item on a meeting's docket, with what was done
   votes.parquet         one row per member and item voted on
-  council.parquet       one row per member and seat, with the dates they are seen
+  members.parquet       one row per member and seat, with the dates they are seen
 
     python build_sd_council.py            # the meetings of the last 120 days again
     python build_sd_council.py --base     # every meeting since 2010 not yet read
@@ -47,13 +47,15 @@ import pandas as pd
 import requests
 
 import build_federal_bills as bills
+import council_tables
 
 log = logging.getLogger(__name__)
 
 HF_REPO = "chrissoria/san-diego-council"
 OUT_DIR = bills.SCRIPT_DIR / "sdcouncil"
 CARD_FILE = bills.SCRIPT_DIR / "README_sd_council.md"
-TABLES = ("items", "meetings", "agenda_items", "votes", "council")
+TABLES = council_tables.TABLES  # the five every council's and board's dataset has; the Council's own columns come after the shared ones
+OLD_MEMBERS_FILE = "data/council.parquet"  # what the table of members was called
 
 SITE = "https://sandiego.hylandcloud.com/211agendaonlinecouncil"
 MEETING_PAGE = SITE + "/Meetings/ViewMeeting?id={id}&doctype={doctype}&site=council"
@@ -444,10 +446,10 @@ def build(base, since, out_dir, limit=0):
     tables["agenda_items"] = tables["agenda_items"].sort_values(["date", "meeting_id", "sequence"]).reset_index(drop=True)
     tables["votes"] = tables["votes"].sort_values(["date", "meeting_id", "item_id", "district"]).reset_index(drop=True)
     tables["items"] = items_table(tables["agenda_items"])
-    tables["council"] = council_table(tables["rosters"], tables["votes"])
+    tables["members"] = council_table(tables["rosters"], tables["votes"])
     if old["meetings"] is not None and len(tables["meetings"]) < len(old["meetings"]):
         raise RuntimeError(f"only {len(tables['meetings'])} meetings where there were {len(old['meetings'])}; not publishing")
-    return tables, {"read": len(read), "asked": len(todo)}
+    return council_tables.standard(tables), {"read": len(read), "asked": len(todo)}
 
 
 def write_tables(tables, out_dir):
@@ -466,7 +468,11 @@ def upload(out_dir, with_card):
         return False
     operations = [CommitOperationAdd(path_in_repo=f"data/{name}.parquet", path_or_fileobj=str(out_dir / f"{name}.parquet")) for name in (*TABLES, "rosters")]
     listed_files = set(api.list_repo_files(HF_REPO, repo_type="dataset"))
-    if (with_card or "README.md" not in listed_files) and CARD_FILE.exists():
+    renamed = OLD_MEMBERS_FILE in listed_files
+    if renamed:  # the table under its old name gives way, and the card has to say where it is now
+        from huggingface_hub import CommitOperationDelete
+        operations.append(CommitOperationDelete(path_in_repo=OLD_MEMBERS_FILE))
+    if (with_card or renamed or "README.md" not in listed_files) and CARD_FILE.exists():
         operations.append(CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=str(CARD_FILE)))
     api.create_commit(repo_id=HF_REPO, repo_type="dataset", operations=operations,
                       commit_message=f"Update San Diego City Council tables ({datetime.now(timezone.utc).strftime('%Y-%m-%d')})")
@@ -501,8 +507,8 @@ def main(argv=None):
             log.error(f"Chamber file not updated: {type(e).__name__}: {e}")
     votes = tables["votes"]
     log.info(f"RESULT: sd-council meetings={len(tables['meetings'])} agenda_items={len(tables['agenda_items'])} items={len(tables['items'])} "
-             f"votes={len(votes)} noes={int((votes['vote'] == 'NO').sum())} members={len(tables['council'])} "
-             f"serving={int(tables['council']['serving'].sum())} meetings_read={counts['read']} of={counts['asked']} "
+             f"votes={len(votes)} noes={int((votes['vote'] == 'NO').sum())} members={len(tables['members'])} "
+             f"serving={int(tables['members']['serving'].sum())} meetings_read={counts['read']} of={counts['asked']} "
              f"newest={tables['meetings']['date'].max() if len(tables['meetings']) else ''} pushed={pushed}")
     return 0 if args.no_upload or pushed else 1
 

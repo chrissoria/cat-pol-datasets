@@ -15,7 +15,10 @@ Tables, in data/:
   meetings.parquet       one row per meeting of the Board and the bodies it sits as
   agenda_items.parquet   one row per item on a meeting's agenda, with what was done
   votes.parquet          one row per supervisor and item acted on
-  supervisors.parquet    one row per supervisor's time on the Board
+  members.parquet        one row per supervisor's time on the Board
+
+All but the first are in the shape every council's and board's tables have
+(council_tables.py), with the County's own columns after the shared ones.
 
 Two ways to run it:
 
@@ -55,14 +58,16 @@ import pandas as pd
 import requests
 
 import build_federal_bills as bills
+import council_tables
 
 log = logging.getLogger(__name__)
 
 HF_REPO = "chrissoria/sd-county-ordinances"
 OUT_DIR = bills.SCRIPT_DIR / "sdcounty"
 CARD_FILE = bills.SCRIPT_DIR / "README_sd_county.md"
-TABLES = ("ordinances", "items", "meetings", "agenda_items", "votes", "supervisors")
+TABLES = ("ordinances", *council_tables.TABLES)
 LEGACY_FILE = "data/train-00000-of-00001.parquet"  # the one table this dataset used to be
+OLD_MEMBERS_FILE = "data/supervisors.parquet"  # what the table of members was called, and `supervisor` its column in votes
 
 API = "https://webapi.legistar.com/v1/sdcounty"
 ITEM_PAGE = "https://sdcounty.legistar.com/LegislationDetail.aspx?ID={id}&GUID={guid}"
@@ -82,7 +87,7 @@ MEETING_COLUMNS = ["meeting_id", "date", "time", "body", "location", "agenda_url
                    "minutes_status", "items", "last_modified"]
 AGENDA_COLUMNS = ["item_id", "meeting_id", "date", "body", "agenda_number", "sequence", "matter_id", "matter_file", "title",
                   "action", "action_text", "result", "mover", "seconder", "ayes", "noes", "not_voting"]
-VOTE_COLUMNS = ["item_id", "meeting_id", "date", "matter_id", "matter_file", "supervisor", "vote"]
+VOTE_COLUMNS = council_tables.COLUMNS["votes"]
 
 # The source does not say which district a supervisor sits for. These are from the County's own pages.
 DISTRICTS = {
@@ -268,13 +273,15 @@ def read_meeting(event):
         papers[matter_id] = [{"name": clean(a.get("MatterAttachmentName")), "url": a.get("MatterAttachmentHyperlink") or ""}
                              for a in item.get("EventItemMatterAttachments") or []]
         cast = api(f"eventitems/{item_id}/votes") if item.get("EventItemActionName") else []
-        tally = {}
+        tally, seen = {}, set()
         for vote in cast:
-            value = clean(vote.get("VoteValueName")).upper()
+            name, value = clean(vote.get("VotePersonName")), council_tables.vote_word(vote.get("VoteValueName"))
+            if (name, value) in seen:
+                continue  # the same vote entered twice
+            seen.add((name, value))
             tally[value] = tally.get(value, 0) + 1
             votes.append({"item_id": item_id, "meeting_id": meeting_id, "date": date, "matter_id": matter_id,
-                          "matter_file": item.get("EventItemMatterFile") or "", "supervisor": clean(vote.get("VotePersonName")),
-                          "vote": value})
+                          "matter_file": item.get("EventItemMatterFile") or "", "member": name, "vote": value})
         agenda.append({
             "item_id": item_id, "meeting_id": meeting_id, "date": date, "body": body,
             "agenda_number": clean(item.get("EventItemAgendaNumber")).rstrip("."),
@@ -284,27 +291,27 @@ def read_meeting(event):
             "action": clean(item.get("EventItemActionName")), "action_text": clean(item.get("EventItemActionText")),
             "result": clean(item.get("EventItemPassedFlagName")),
             "mover": clean(item.get("EventItemMover")), "seconder": clean(item.get("EventItemSeconder")),
-            "ayes": tally.get("AYE", 0), "noes": tally.get("NOE", 0) + tally.get("NAY", 0) + tally.get("NO", 0),
-            "not_voting": sum(count for value, count in tally.items() if value not in ("AYE", "NOE", "NAY", "NO")),
+            "ayes": tally.get(council_tables.AYE, 0), "noes": tally.get(council_tables.NO, 0),
+            "not_voting": sum(count for value, count in tally.items() if value not in (council_tables.AYE, council_tables.NO)),
         })
     return agenda, votes, papers
 
 
-def supervisors_table(records, votes):
+def members_table(records, votes):
     seats = [r for r in records if clean(r.get("OfficeRecordBodyName")) == "BOARD OF SUPERVISORS"
              and clean(r.get("OfficeRecordTitle")) == "Supervisor"]
     rows = [{
         "name": clean(seat["OfficeRecordFullName"]),
         "district": DISTRICTS.get(clean(seat["OfficeRecordFullName"])),
+        "role": clean(seat.get("OfficeRecordMemberType")),
         "start": day_of(seat.get("OfficeRecordStartDate")),
         "end": day_of(seat.get("OfficeRecordEndDate")),
-        "role": clean(seat.get("OfficeRecordMemberType")),
         "serving": day_of(seat.get("OfficeRecordStartDate")) <= today() <= (day_of(seat.get("OfficeRecordEndDate")) or "9999"),
     } for seat in seats]
-    out = pd.DataFrame(rows, columns=["name", "district", "start", "end", "role", "serving"])
+    out = pd.DataFrame(rows, columns=council_tables.COLUMNS["members"][:6])
     out["district"] = out["district"].astype("Int64")
     # The record holds one term, not a whole time on the Board. The votes say when someone was first and last there.
-    cast = votes.groupby("supervisor")["date"].agg(["min", "max", "size"])
+    cast = votes.groupby("member")["date"].agg(["min", "max", "size"])
     out["first_vote"] = out["name"].map(cast["min"]).fillna("")
     out["last_vote"] = out["name"].map(cast["max"]).fillna("")
     out["votes"] = out["name"].map(cast["size"]).fillna(0).astype(int)
@@ -400,9 +407,10 @@ def published(name):
     """A table as last published, or None."""
     try:
         from huggingface_hub import hf_hub_download
-        return pd.read_parquet(hf_hub_download(HF_REPO, f"data/{name}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
+        found = pd.read_parquet(hf_hub_download(HF_REPO, f"data/{name}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
     except Exception:
         return None
+    return found.rename(columns={"supervisor": "member"})  # as votes had it before the tables were given the one shape
 
 
 def published_items(out_dir):
@@ -431,7 +439,8 @@ def build(base, max_texts, out_dir):
     before = {name: published(name) for name in ("agenda_items", "votes")}
     if any(table is None for table in before.values()):
         local = {name: Path(out_dir) / f"{name}.parquet" for name in before}
-        before = {name: pd.read_parquet(path) if path.exists() else None for name, path in local.items()}
+        before = {name: pd.read_parquet(path).rename(columns={"supervisor": "member"}) if path.exists() else None
+                  for name, path in local.items()}
     known = set(before["agenda_items"]["meeting_id"]) if before["agenda_items"] is not None else set()
     since = (datetime.now(timezone.utc) - timedelta(days=RECENT_DAYS)).strftime("%Y-%m-%d")
     wanted = [event for event in events
@@ -453,7 +462,7 @@ def build(base, max_texts, out_dir):
         agenda = pd.concat([before["agenda_items"][~before["agenda_items"]["meeting_id"].isin(read)], agenda], ignore_index=True)
         votes = pd.concat([before["votes"][~before["votes"]["meeting_id"].isin(read)], votes], ignore_index=True)
     agenda = agenda.sort_values(["date", "meeting_id", "sequence"]).reset_index(drop=True)
-    votes = votes.sort_values(["date", "meeting_id", "item_id", "supervisor"]).reset_index(drop=True)
+    votes = votes.sort_values(["date", "meeting_id", "item_id", "member"]).reset_index(drop=True)
     meetings["items"] = meetings["meeting_id"].map(agenda.groupby("meeting_id").size()).fillna(0).astype(int)
 
     previous = published_items(out_dir)
@@ -478,14 +487,15 @@ def build(base, max_texts, out_dir):
             raise RuntimeError(f"only {with_text} items have text where {had} did; not publishing")
         if "subject" in previous.columns and len(items) < len(previous) * 0.98:
             raise RuntimeError(f"only {len(items)} items where there were {len(previous)}; not publishing")
-    tables = {
+    tables = council_tables.standard({
         "items": items,
+        # The one table the dataset used to be, with its first ten columns where they have always been.
         "ordinances": items[items["doc_type"] != "other"].reset_index(drop=True),
         "meetings": meetings,
         "agenda_items": agenda,
         "votes": votes,
-        "supervisors": supervisors_table(api("officerecords"), votes),
-    }
+        "members": members_table(api("officerecords"), votes),
+    })
     return tables, {"read": texts_read, "waiting": waiting, "with_text": with_text, "pdf": "ok" if pdfs else "skipped",
                     "meetings_read": len(read)}
 
@@ -507,9 +517,10 @@ def upload(out_dir, with_card):
                   for name in TABLES]
     listed = set(api_.list_repo_files(HF_REPO, repo_type="dataset"))
     first = LEGACY_FILE in listed
-    if first:  # the old single table gives way to the new ones, and the card has to say where they are
-        operations.append(CommitOperationDelete(path_in_repo=LEGACY_FILE))
-    if (with_card or first or "README.md" not in listed) and CARD_FILE.exists():
+    renamed = OLD_MEMBERS_FILE in listed
+    # An old table gives way to the new ones, and the card has to say where they are.
+    operations += [CommitOperationDelete(path_in_repo=old) for old in (LEGACY_FILE, OLD_MEMBERS_FILE) if old in listed]
+    if (with_card or first or renamed or "README.md" not in listed) and CARD_FILE.exists():
         operations.append(CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=str(CARD_FILE)))
     api_.create_commit(repo_id=HF_REPO, repo_type="dataset", operations=operations,
                        commit_message=f"Update San Diego County tables ({today()})")

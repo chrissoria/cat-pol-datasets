@@ -27,10 +27,10 @@ configs:
   data_files:
   - split: train
     path: data/votes.parquet
-- config_name: council
+- config_name: members
   data_files:
   - split: train
-    path: data/council.parquet
+    path: data/members.parquet
 - config_name: rosters
   data_files:
   - split: train
@@ -71,8 +71,13 @@ meeting." The minutes, which follow months later, are not read here.
 | `meetings` | meeting with a results summary | about 680 |
 | `agenda_items` | item on a meeting's docket | about 9,600 |
 | `votes` | member and item voted on | about 79,000 |
-| `council` | member and seat | 30 |
+| `members` | member and seat | 30 |
 | `rosters` | meeting and seat | about 5,900 |
+
+The first five tables, and the columns listed first in each, are the same in
+every council and board dataset made this way, so two can be set one on the
+other. The Council's own columns (`doc_num`, `vote_text`, a vote's `district`,
+a meeting's `name`) come after the shared ones.
 
 ### items
 
@@ -107,14 +112,14 @@ such as a proclamation or a report, is one item per docket entry.
 
 ### votes
 
-`member`, `district`, and `vote`: `AYE`, `NO`, `NOT PRESENT`, `RECUSED`,
-`INELIGIBLE`, `ABSENT` or `ABSTAIN`.
+`member`, `vote` and `district`. A vote is `AYE`, `NO`, `NOT PRESENT`,
+`RECUSED`, `INELIGIBLE`, `ABSENT` or `ABSTAIN`.
 
-### council and rosters
+### members and rosters
 
 `rosters` is who sat in each district at each meeting, with the role the
 agenda gives (`Council President`, `Council President Pro Tem`,
-`Councilmember`). `council` is made from it: one row per member and seat, with
+`Councilmember`). `members` is made from it: one row per member and seat, with
 the first and last meeting they are listed at (`start`, `end`), whether the
 latest agenda lists them (`serving`), and how many votes of theirs are here.
 A member's dates are the meetings they are seen at, not the days they were

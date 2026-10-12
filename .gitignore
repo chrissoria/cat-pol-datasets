@@ -32,3 +32,7 @@ sandiego/
 sdcouncil/
 # Local copy of the places table and the files it is built from
 places/
+# Local copies of the Legistar cities' meetings and votes
+legistar/
+# Local readings of the Berkeley City Clerk's documents
+berkeley/
