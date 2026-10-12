@@ -113,23 +113,22 @@ def scrape_enactments_page(page, page_num: int) -> list[dict]:
         else:
             doc_type = "ordinance"
 
-        # Parse date (M/D/YYYY → YYYY-MM-DD, or year-only → YYYY-01-01)
+        # Rows of other tables on the page (the reader's settings) have no enactment link
+        if "/enactments/" not in detail_url:
+            continue
+
+        # Parse date (M/D/YYYY → YYYY-MM-DD). A year-only cell gives the year and
+        # no date; "—" or anything else gives neither. No January 1 placeholders.
         date = ""
+        year = 0
         try:
             from datetime import datetime
             dt = datetime.strptime(date_raw, "%m/%d/%Y")
             date = dt.strftime("%Y-%m-%d")
+            year = dt.year
         except (ValueError, TypeError):
-            # Some older entries only have a year
             if date_raw.strip().isdigit() and len(date_raw.strip()) == 4:
-                date = f"{date_raw.strip()}-01-01"
-            else:
-                date = date_raw
-
-        try:
-            year = int(date[:4]) if date else 0
-        except ValueError:
-            year = 0
+                year = int(date_raw.strip())
 
         entries.append({
             "date": date,

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -77,6 +78,9 @@ def pull_municipal_codes_city(city_key: str, log: logging.Logger, dry_run: bool 
 
                 tables = page.query_selector_all("table")
                 if len(tables) < 2:
+                    if page_num == 1:
+                        # No listing at all: a bot check or block page, not "nothing new"
+                        raise RuntimeError("no enactments table on page 1 (bot check or block page?)")
                     break
 
                 rows = tables[1].query_selector_all("tr")
@@ -94,19 +98,25 @@ def pull_municipal_codes_city(city_key: str, log: logging.Logger, dry_run: bool 
                         detail_path = a_tag.get_attribute("href") or ""
                         detail_url = f"{cfg['base_url']}{detail_path}" if detail_path.startswith("/") else detail_path
 
+                    # Rows of other tables on the page (the reader's settings) have no enactment link
+                    if "/enactments/" not in detail_url:
+                        continue
+
                     if ord_num in existing_ords:
                         found_existing = True
                         continue
 
+                    # A year-only cell gives the year and no date; "—" gives neither.
                     date_raw = cells[2].inner_text().strip()
                     date = ""
+                    year = 0
                     try:
-                        date = datetime.strptime(date_raw, "%m/%d/%Y").strftime("%Y-%m-%d")
+                        dt = datetime.strptime(date_raw, "%m/%d/%Y")
+                        date = dt.strftime("%Y-%m-%d")
+                        year = dt.year
                     except (ValueError, TypeError):
-                        if date_raw.strip().isdigit() and len(date_raw.strip()) == 4:
-                            date = date_raw.strip()
-                        else:
-                            date = date_raw
+                        if date_raw.isdigit() and len(date_raw) == 4:
+                            year = int(date_raw)
 
                     num_lower = ord_num.lower()
                     doc_type = "resolution" if "res" in num_lower else "ordinance"
@@ -120,7 +130,7 @@ def pull_municipal_codes_city(city_key: str, log: logging.Logger, dry_run: bool 
                         "disposition": cells[3].inner_text().strip(),
                         "effective_date": "",
                         "url": detail_url,
-                        "year": int(date[:4]) if date and date[:4].isdigit() else 0,
+                        "year": year,
                     }
 
                     if detail_url:
@@ -129,6 +139,9 @@ def pull_municipal_codes_city(city_key: str, log: logging.Logger, dry_run: bool 
                             page.wait_for_timeout(1500)
                             main = page.query_selector("#main-column, main, article")
                             entry["text"] = main.inner_text().strip() if main else page.inner_text("body").strip()
+                            eff = re.search(r"Effective From\n\s*(\d{1,2}/\d{1,2}/\d{4})", entry["text"])
+                            if eff:
+                                entry["effective_date"] = datetime.strptime(eff.group(1), "%m/%d/%Y").strftime("%Y-%m-%d")
                         except Exception as e:
                             log.warning(f"{tag} Detail page failed for {ord_num}: {e}")
                         jittered_sleep(2.0)

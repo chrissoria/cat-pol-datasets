@@ -81,6 +81,10 @@ def pull_codepublishing_city(city_key: str, log: logging.Logger, dry_run: bool =
             soup = BeautifulSoup(resp.text, "html.parser")
             content = soup.find("div", id="mainContent")
             if not content:
+                if "ecode360.com" in resp.text:
+                    # Every address now answers 200 with a notice that the code has moved
+                    log.error(f"{tag} Code Publishing no longer hosts this code (moved to eCode360). Nothing read.")
+                    return 1
                 continue
 
             text = content.get_text(separator="\n").strip()

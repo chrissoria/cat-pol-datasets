@@ -90,13 +90,19 @@ def scrape_year(year: int, session: requests.Session) -> list[dict]:
     # Skip header row (first row contains column labels in <td>)
     for tr in all_trs[1:]:
         tds = tr.find_all("td")
-        if len(tds) < 4:
+        # 1999-2010 pages have three columns (file, enactment number, title)
+        # and no effective date; 2011 onward have four.
+        if len(tds) < 3:
             continue
 
         file_number = tds[0].get_text(strip=True)
         enactment_td = tds[1]
-        date_raw = tds[2].get_text(strip=True)
-        title = tds[3].get_text(strip=True)
+        if len(tds) >= 4:
+            date_raw = tds[2].get_text(strip=True)
+            title = tds[3].get_text(strip=True)
+        else:
+            date_raw = ""
+            title = tds[2].get_text(strip=True)
 
         # Enactment number and PDF URL from <a> tag
         a_tag = enactment_td.find("a")
@@ -146,6 +152,13 @@ def extract_pdf_text(url: str, session: requests.Session) -> str:
 
     try:
         resp = session.get(url, headers=HEADERS, timeout=60, verify=False)
+        # Back off and retry when the server is busy or rate-limiting
+        for attempt in range(1, 4):
+            if resp.status_code != 429 and resp.status_code < 500:
+                break
+            print(f"  [backoff] HTTP {resp.status_code} for {url}, waiting {60 * attempt}s")
+            time.sleep(60 * attempt)
+            resp = session.get(url, headers=HEADERS, timeout=60, verify=False)
         resp.raise_for_status()
         with pdfplumber.open(io.BytesIO(resp.content)) as pdf:
             pages_text = []
