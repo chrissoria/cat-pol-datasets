@@ -14,8 +14,8 @@ Two ways to run it:
     python build_berkeley.py
         Reads the Clerk's list of ordinances (three requests), gives each
         ordinance in the dataset the day the Clerk has for it, adds the
-        ordinances passed since the dataset's newest, and publishes. Where
-        texts have been read (below) it publishes those too.
+        ordinances passed since the dataset's newest, and publishes if
+        anything changed.
 
     python build_berkeley.py --texts
         Reads each ordinance's document. They are scans with no text of their
@@ -23,6 +23,10 @@ Two ways to run it:
         in berkeley/ every 200 documents, so it can be stopped and started
         again. It does not publish.
 
+    --with-texts   on a plain run, put the texts read so far into the table.
+                   The first time, `text` becomes the ordinance itself and
+                   what it held (the code's note on the ordinance) moves to
+                   `code_history`; after that every run carries the texts.
     --workers N    documents read at once with --texts (default 2)
     --limit N      with --texts, read at most this many
     --no-upload    build the table but do not publish it
@@ -185,9 +189,22 @@ def published():
     return pd.read_parquet(hf_hub_download(HF_REPO, DATA_FILE, repo_type="dataset", token=bills.HF_TOKEN, force_download=True))
 
 
-def build(dataset, listing, kept):
+def publish(table):
+    """Publish the table, and keep the weekly pull's cache in step with it. False, with why logged, if it could not be."""
+    problem = bills.hf_write_problem(HF_REPO)
+    if problem:
+        log.error(f"Berkeley ordinances not uploaded: {problem}")
+        return False
+    from datasets import Dataset
+    Dataset.from_pandas(table, preserve_index=False).push_to_hub(HF_REPO, token=bills.HF_TOKEN, private=False)
+    table.to_parquet(CACHE, index=False)
+    return True
+
+
+def build(dataset, listing, kept, with_texts=False):
+    """The table to publish. The texts read here go into it once that has been asked for, and from then on always."""
     out, counts = add_listed(dataset, listing)
-    if len(kept) or "code_history" in out.columns:
+    if with_texts or "code_history" in out.columns:
         out = add_texts(out, kept)
     if len(out) < len(dataset):
         raise RuntimeError(f"only {len(out)} rows where there were {len(dataset)}; not publishing")
@@ -259,8 +276,13 @@ def main(argv=None):
     parser.add_argument("--texts", action="store_true", help="read each ordinance's document by OCR; does not publish")
     parser.add_argument("--workers", type=int, default=2, help="documents read at once with --texts")
     parser.add_argument("--limit", type=int, default=0, help="with --texts, read at most this many")
+    parser.add_argument("--with-texts", action="store_true",
+                        help="put the texts read so far into the table: `text` becomes the ordinance, and what it held is kept in `code_history`")
     parser.add_argument("--no-upload", action="store_true", help="build the table but do not publish it")
     args = parser.parse_args(argv)
+    if not args.no_upload and not args.texts and not bills.HF_TOKEN:
+        log.error("Berkeley not built: no Hugging Face token; pass --no-upload to build the table only")
+        return 1
 
     try:
         listing = read_listing()
@@ -278,15 +300,21 @@ def main(argv=None):
         return 0
 
     try:
-        table, counts = build(published(), listing, texts_kept())
+        before = published()
+        table, counts = build(before, listing, texts_kept(), args.with_texts)
     except Exception as e:
         log.error(f"Berkeley not built: {type(e).__name__}: {e}")
         return 1
     pushed = False
-    if not args.no_upload:
-        from lib.hf_utils import push_hf_dataset
-        push_hf_dataset(table, HF_REPO, CACHE, log)
-        pushed = len(published()) == len(table)  # the helper logs a failure and does not raise
+    if args.no_upload:
+        pass
+    elif table.equals(before):
+        log.info("Nothing new at the Clerk's; not publishing")
+    else:
+        try:
+            pushed = publish(table)
+        except Exception as e:
+            log.error(f"Berkeley ordinances not uploaded: {type(e).__name__}: {e}")
     log.info(f"RESULT: berkeley rows={len(table)} listed={len(listing)} dated={counts['dated']} "
              f"dates_changed={counts['dates_changed']} added={counts['added']} listed_not_here={counts['listed_not_here']} "
              f"here_not_listed={counts['here_not_listed']} with_text={counts['with_text']} newest={table['date'].max()} "

@@ -21,8 +21,9 @@ They are kept here in legistar/<city>/.
 Two ways to run it:
 
     python build_legistar_council.py --city oakland
-        Lists every item and meeting again, and reads again the agendas and
-        votes of meetings in the last 60 days and those to come.
+        The routine run. Starts from the published tables, lists every item
+        and meeting again, and reads again the agendas and votes of meetings
+        in the last 60 days and those to come. A minute or two.
 
     python build_legistar_council.py --city oakland --base
         Every meeting not yet read. Hours for a city with twenty years of
@@ -181,9 +182,30 @@ def members_table(records, votes, meetings, bodies):
     return out.sort_values(["start", "name"]).reset_index(drop=True)
 
 
-def held(out_dir, name):
+def repo_of(key):
+    return f"chrissoria/{key}-council"
+
+
+def published(key, name):
+    """A table as last published, or None."""
+    try:
+        from huggingface_hub import hf_hub_download
+        return pd.read_parquet(hf_hub_download(repo_of(key), f"data/{name}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
+    except Exception:
+        return None
+
+
+def held(key, out_dir, name, base):
+    """The table a run starts from: what is published, or failing that what was last written here.
+
+    A whole run looks here first: it is run by hand and stopped and started, so what it has written is further on than
+    what is published. The routine run looks at what is published first: it may be run where nothing was written before.
+    """
     path = Path(out_dir) / f"{name}.parquet"
-    return pd.read_parquet(path) if path.exists() else None
+    local = lambda: pd.read_parquet(path) if path.exists() else None
+    first, second = (local, lambda: published(key, name)) if base else (lambda: published(key, name), local)
+    found = first()
+    return found if found is not None else second()
 
 
 def write_tables(tables, out_dir):
@@ -192,7 +214,8 @@ def write_tables(tables, out_dir):
         table.to_parquet(out_dir / f"{name}.parquet", index=False)
 
 
-def build(city, base, since, out_dir, every=200):
+def build(key, base, since, out_dir, every=200):
+    city = CITIES[key]
     point_at(city)
     events = county.paged("events", orderby="EventId")
     matters = county.paged("matters", orderby="MatterId")
@@ -201,7 +224,8 @@ def build(city, base, since, out_dir, every=200):
         raise RuntimeError("the listing of items came back nearly empty")
     meetings = county.meetings_table(events)
 
-    agenda, votes, items = held(out_dir, "agenda_items"), held(out_dir, "votes"), held(out_dir, "items")
+    agenda, votes, items = (held(key, out_dir, name, base) for name in ("agenda_items", "votes", "items"))
+    before = 0 if votes is None else len(votes)
     known = set(agenda["meeting_id"]) if agenda is not None else set()
     recent = (datetime.now(timezone.utc) - timedelta(days=county.RECENT_DAYS)).strftime("%Y-%m-%d")
     wanted = [event for event in events
@@ -239,11 +263,9 @@ def build(city, base, since, out_dir, every=200):
                                       {clean(body) for body in city["council"]})
     tables = council_tables.standard(tables)
     write_tables(tables, out_dir)
+    if len(votes) < before * 0.98:
+        raise RuntimeError(f"only {len(votes)} votes where there were {before}; not publishing")
     return tables, read
-
-
-def repo_of(key):
-    return f"chrissoria/{key}-council"
 
 
 def card(key, tables):
@@ -296,7 +318,7 @@ def main(argv=None):
 
     out_dir = Path(args.out) if args.out else OUT_DIR / args.city
     try:
-        tables, read = build(CITIES[args.city], args.base, args.since, out_dir, args.every)
+        tables, read = build(args.city, args.base, args.since, out_dir, args.every)
     except Exception as e:
         log.error(f"{args.city} tables not built: {type(e).__name__}: {e}")
         return 1

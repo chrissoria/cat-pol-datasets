@@ -124,26 +124,41 @@ began: `python build_california_bills.py --session 2023` (two minutes). The
 dataset goes back to 1999-2000; the Legislature's files for earlier sessions
 hold only the measures that were chaptered.
 
-### Not yet in the routine: San Diego County
+### Local bodies
 
-`python3 build_sd_county.py` keeps `chrissoria/sd-county-ordinances` current
-(about a minute: eight requests to list every item, the agendas and votes of
-meetings in the last 60 days, and the documents of items that are new). It is
-run by hand for now. To add it to the daily run it would be chained after
-California in `build_federal_bills.py`, never fatal, like the others. It needs:
+After California the run brings six local datasets up to date, one after
+another. They are listed in `LOCAL_STEPS` in `build_federal_bills.py`, and none
+can fail the run: a step that cannot reach its source or may not write logs one
+ERROR line saying which, and the next step starts. Each starts from its own
+published tables, since the repository is cloned afresh for every run, reads
+what is recent again, and refuses to publish fewer rows than are published.
+Together they take about ten minutes.
 
-- `webapi.legistar.com` and `sdcounty.legistar1.com` on the network allowlist
-  (the API, and the documents attached to items);
-- write access to `chrissoria/sd-county-ordinances` for the cloud token;
-- `pdfplumber` in the environment, for the items whose document is a PDF.
-  `cloud_setup.sh` installs it if it can. Without it those items wait
-  (`pdf=skipped` in the result line) and Word documents are still read.
+| Step | Dataset | Reads | Hosts to allow |
+|---|---|---|---|
+| `build_sd_county.py` | `sd-county-ordinances` | meetings of the last 60 days; up to 300 documents | `webapi.legistar.com`, `sdcounty.legistar1.com` |
+| `build_sd_council.py` | `san-diego-council` | meetings of the last 120 days | `sandiego.hylandcloud.com` |
+| `build_legistar_council.py --city oakland` | `oakland-council` | meetings of the last 60 days | `webapi.legistar.com` |
+| `build_legistar_council.py --city fresno` | `fresno-council` | the same | `webapi.legistar.com` |
+| `build_legistar_council.py --city salinas` | `salinas-council` | the same | `webapi.legistar.com` |
+| `build_berkeley.py` | `berkeley-ordinances` | the City Clerk's list of ordinances | `records.cityofberkeley.info` |
 
-It reports `RESULT: sd-county items=… ordinances=… resolutions=… with_text=…
-meetings=… agenda_items=… votes=… meetings_read=… texts_read=…
-texts_waiting=… pdf=ok|skipped newest=… pushed=…`, reads at most 300
-documents a run, and refuses to publish fewer items or texts than are
-published.
+The cloud token needs write access to each of the six datasets, all under
+`chrissoria/`. `pdfplumber` in the environment (`cloud_setup.sh` installs it if
+it can) lets the County step read the items whose document is a PDF; without
+it those wait (`pdf=skipped`) and Word documents are still read.
+
+Each reports a line of its own: `RESULT: sd-county …`, `RESULT: sd-council …`,
+`RESULT: legistar-oakland …` (and `-fresno`, `-salinas`), `RESULT: berkeley …`,
+each ending `pushed=True|False`. The County and the San Diego council also
+write the file Capitol World reads for their rooms (`RESULT: chamber-file …`).
+Berkeley's ends `pushed=False` on a day the Clerk has nothing new, which is
+most days.
+
+Not in the run: `long-beach-council`, whose record in Legistar ends in 2023;
+the reading of Berkeley's scans by OCR (`build_berkeley.py --texts`), which is
+hours of work and run by hand; and `us-places`, which needs building only when
+a body is added or the Census files change.
 
 ## 2. Guards
 
@@ -190,6 +205,11 @@ variables are visible to anyone who uses the environment.
   cas-bridge.xethub.hf.co
   *.hf.co
   ```
+
+  The later steps each name the hosts and the write access they need where
+  they are described in §1. For the local bodies that is four more hosts
+  (`webapi.legistar.com`, `sdcounty.legistar1.com`, `sandiego.hylandcloud.com`,
+  `records.cityofberkeley.info`) and write access to six more datasets.
 
 **c. The routine.** Daily at 13:00 UTC (06:00 PDT, 05:00 PST), with this
 repository attached as a source, the environment from (b), the prompt from §4,

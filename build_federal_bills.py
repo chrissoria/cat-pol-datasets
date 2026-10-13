@@ -57,6 +57,16 @@ API_BASE = "https://api.congress.gov/v3"
 API_KEY = os.getenv("CONGRESS_API_KEY") or os.getenv("GOVINFO_API_KEY") or os.getenv("DATA_GOV_API_KEY") or "DEMO_KEY"
 HF_TOKEN = os.getenv("CATLLM_HUGGINGFACE_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")
 VOTES_REPO = "chrissoria/federal-votes"
+# The local bodies kept current at the end of the daily run: the script, what it is run with, and what to call it.
+# Long Beach is not here: its record in Legistar ends in 2023.
+LOCAL_STEPS = (
+    ("build_sd_county", [], "San Diego County tables"),
+    ("build_sd_council", [], "San Diego City Council tables"),
+    ("build_legistar_council", ["--city", "oakland"], "Oakland council tables"),
+    ("build_legistar_council", ["--city", "fresno"], "Fresno council tables"),
+    ("build_legistar_council", ["--city", "salinas"], "Salinas council tables"),
+    ("build_berkeley", [], "Berkeley ordinances"),
+)
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1039,6 +1049,15 @@ def main():
             build_california_bills.main([])
         except Exception as e:
             log.warning(f"California tables not updated: {e}")
+
+    # Local bodies, each from its own source into its own dataset: one after another, and never fatal.
+    if not args.dry_run:
+        import importlib
+        for module, arguments, what in LOCAL_STEPS:
+            try:
+                importlib.import_module(module).main(arguments)
+            except (Exception, SystemExit) as e:
+                log.warning(f"{what} not updated: {type(e).__name__}: {e}")
 
     log.info(f"RESULT: federal-bills fetched={len(new_df)} total={len(combined)} pushed={pushed}")
     log.info("Done.")

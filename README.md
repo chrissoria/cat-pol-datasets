@@ -49,8 +49,8 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   everything filed with the San Diego County Board of Supervisors since 2017,
   each meeting's agenda and what was done, and how each supervisor voted, from
   the County's Legistar API. `--base` reads every meeting; without it, the
-  recent ones. `README_sd_county.md` is the dataset's card. It is not part of a
-  cloud routine yet (`docs/cloud_routine.md` says what that would take).
+  recent ones. `README_sd_county.md` is the dataset's card. It runs at the end
+  of the daily cloud run, with the other local bodies (`docs/cloud_routine.md`).
 - `build_san_diego.py` fills in
   [san-diego-ordinances](https://huggingface.co/datasets/chrissoria/san-diego-ordinances),
   the City of San Diego's ordinances and resolutions since 1970. It reads the

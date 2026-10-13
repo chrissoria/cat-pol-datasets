@@ -101,3 +101,15 @@ def test_the_documents_still_to_read_are_the_newest_first_and_none_listed_twice(
                          {"number": "950", "text": "", "text_source": "", "pages": None, "ocr_confidence": None, "problem": "not fetched: Timeout"}],
                         columns=berkeley.TEXT_COLUMNS)
     assert berkeley.waiting(LISTING, kept) == ["8002", "8001", "3495", "2099", "950"]  # a failure is tried again
+
+
+def test_texts_read_here_are_not_published_until_asked_for_and_then_always():
+    kept = pd.DataFrame([{"number": "2099", "text": "ORDINANCE NO. 2099-N.S.", "text_source": "ocr", "pages": 2, "ocr_confidence": 88.5, "problem": ""}],
+                        columns=berkeley.TEXT_COLUMNS)
+    plain, _ = berkeley.build(dataset(), LISTING, kept)
+    assert "code_history" not in plain.columns and set(plain["text"]) == {"Legislative History", ""}
+    asked, counts = berkeley.build(dataset(), LISTING, kept, with_texts=True)
+    assert counts["with_text"] == 1 and asked.set_index("ordinance_number").loc["Ord. 2099-NS", "text"].startswith("ORDINANCE")
+    # Once the table has the texts, a run with none of its own to add, as in the cloud, keeps them.
+    later, counts = berkeley.build(asked, LISTING, pd.DataFrame(columns=berkeley.TEXT_COLUMNS))
+    assert counts["with_text"] == 1 and later.set_index("ordinance_number").loc["Ord. 2099-NS", "code_history"] == "Legislative History"
