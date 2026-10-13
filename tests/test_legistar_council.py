@@ -79,12 +79,14 @@ def test_the_council_is_those_the_source_seats_on_it_with_when_each_first_and_la
     records = [record("Dennis Donohue", "2024-12-04", "2099-12-31", title="Mayor"), record("Jose Barajas", "2020-12-04", "2024-12-03", title=None),
                record("A Planner", "2024-12-04", None, body="Planning Commission", title="Commissioner")]
     votes = votes_of(vote("1", "Dennis Donohue", "AYE", date="2025-01-07"), vote("2", "Dennis Donohue", "AYE", date="2026-05-13"),
-                     vote("2", "Steve McShane", "NO", date="2026-05-13"), vote("3", "A Planner", "AYE", meeting="8"))
+                     *[vote(str(n), "Steve McShane", "NO", date=f"2026-05-{n}") for n in range(10, 15)], vote("3", "A Planner", "AYE", meeting="8"),
+                     vote("4", "A Clerk", "AYE", date="2026-05-13"))
     meetings = pd.DataFrame({"meeting_id": ["9", "8"], "body": ["City Council", "Planning Commission"]})
     council = city.members_table(records, votes, meetings, {"City Council"}).set_index("name")
-    # Steve McShane votes at a council meeting and has no term on record; the planner votes only at the commission.
+    # Steve McShane votes at council meetings on five days and has no term on record. The planner votes only at the
+    # commission, and the clerk's name is against one vote on one day, which is a slip and not a seat.
     assert list(council.index) == ["Steve McShane", "Jose Barajas", "Dennis Donohue"]
-    assert council.loc["Steve McShane", ["role", "start", "serving", "votes"]].tolist() == ["", "", False, 1]
+    assert council.loc["Steve McShane", ["role", "start", "serving", "votes"]].tolist() == ["", "", False, 5]
     assert council.loc["Dennis Donohue", ["role", "serving", "first_vote", "last_vote", "votes"]].tolist() == ["Mayor", True, "2025-01-07", "2026-05-13", 2]
     assert council.loc["Jose Barajas", ["role", "serving", "votes"]].tolist() == ["Member", False, 0]
     assert council["district"].isna().all()  # the source does not say, and none were typed in for these
@@ -92,12 +94,13 @@ def test_the_council_is_those_the_source_seats_on_it_with_when_each_first_and_la
 
 def test_a_district_is_typed_in_by_name_and_a_mayor_has_none():
     records = [record("Kimbley Craig", "2010-12-31", "2018-12-05"), record("Kimbley Craig", "2020-12-08", "2024-12-03", title="Mayor"),
-               record("Tony Barrera", "2010-11-02", "2099-12-31")]
-    votes = votes_of(vote("1", "Steve McShane", "AYE"))
+               record("Tony Barrera", "2010-11-02", "2099-12-31"), record("Bonnie Gore", "2026-01-01", "2026-12-31", title="Supervisor, District 1")]
+    votes = votes_of(*[vote(str(n), "Steve McShane", "AYE", date=f"2026-05-{n}") for n in range(10, 15)])
     meetings = pd.DataFrame({"meeting_id": ["9"], "body": ["City Council"]})
     table = city.members_table(records, votes, meetings, {"City Council"}, {"Kimbley Craig": 5, "Tony Barrera": 2, "Steve McShane": 3})
     assert table[["name", "role", "district"]].astype(object).where(table[["name", "role", "district"]].notna(), None).values.tolist() == [
-        ["Steve McShane", "", 3], ["Tony Barrera", "Councilmember", 2], ["Kimbley Craig", "Councilmember", 5], ["Kimbley Craig", "Mayor", None]]
+        ["Steve McShane", "", 3], ["Tony Barrera", "Councilmember", 2], ["Kimbley Craig", "Councilmember", 5], ["Kimbley Craig", "Mayor", None],
+        ["Bonnie Gore", "Supervisor, District 1", 1]]  # no district was typed for her: the office's title gives it
     every = {name for names in city.DISTRICTS.values() for name in names}
     assert all(isinstance(d, int) and 1 <= d <= 9 for names in city.DISTRICTS.values() for d in names.values()) and "Vice Mayor Lowenthal" not in every
 
@@ -145,3 +148,14 @@ def test_a_citys_card_is_the_one_card_with_its_own_name_addresses_and_counts():
     assert "# Long Beach City Council" in text and "webapi.legistar.com/v1/longbeach" in text
     assert "chrissoria/long-beach-council" in text and "long-beach-ordinances" in text
     assert "{" not in text.split("---", 2)[2]  # every fact was written in
+
+
+def test_a_countys_board_has_the_same_card_in_a_countys_words_and_a_dataset_named_for_it():
+    meetings = pd.DataFrame({"meeting_id": ["8", "9"], "date": ["2009-02-03", "2199-09-09"], "body": ["BOARD OF SUPERVISORS"] * 2, "items": [3, 1]})
+    empty = pd.DataFrame()
+    text = city.card("san-mateo-county", {"items": empty, "meetings": meetings, "agenda_items": empty, "votes": votes_of(), "members": empty})
+    assert city.repo_of("san-mateo-county") == "chrissoria/san-mateo-county-board" and city.repo_of("oakland") == "chrissoria/oakland-council"
+    assert "# San Mateo County Board of Supervisors" in text and "the County's legislative system" in text and "County of San Mateo" in text
+    assert "run from 2009-02-03 to 2009-02-03" in text  # a stray meeting dated 2199 is not the end of the record
+    assert "so `district` is\n  empty" in text and "san-mateo-county-ordinances" not in text and "City" not in text.split("---", 2)[2]
+    assert "{" not in text.split("---", 2)[2]

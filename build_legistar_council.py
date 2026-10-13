@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-Build, for a city whose council keeps its record in Legistar, what a room in
-Capitol World is made from: its meetings, what was on each agenda, what the
-council did with it, and how each member voted.
+Build, for a city council or a county board of supervisors that keeps its
+record in Legistar, what a room in Capitol World is made from: its meetings,
+what was on each agenda, what the body did with it, and how each member voted.
 
 One source: the city's legislative system, through the public API at
 webapi.legistar.com/v1/<city>. It is the same system San Diego County uses, and
 this reads it with build_sd_county's own functions pointed at another city.
 What differs from one city to the next is set out in CITIES.
 
-Each city has a dataset of its own, chrissoria/<city>-council, with the five
-tables every council's and board's dataset has (council_tables.py), in data/:
+Each has a dataset of its own (chrissoria/<city>-council, or
+chrissoria/<county>-county-board), with the five tables every council's and
+board's dataset has (council_tables.py), in data/:
   items.parquet          every item filed, of any kind
   meetings.parquet       one row per meeting of the council and its committees
   agenda_items.parquet   one row per item on a meeting's agenda, with what was done
@@ -42,6 +43,7 @@ The text of ordinances and resolutions is in each city's ordinances dataset
 import argparse
 import json
 import logging
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -72,6 +74,26 @@ CITIES = {
     "long-beach": {"client": "longbeach", "name": "Long Beach", "council": ["City Council"]},
     "fresno": {"client": "fresno", "name": "Fresno", "council": ["City Council"]},
     "salinas": {"client": "salinas", "name": "Salinas", "council": ["City Council"]},
+    # A county's board of supervisors is read the same way. `owner` says whose record it is, where it is not a city's.
+    "riverside-county": {"client": "riversidecountyca", "name": "Riverside", "owner": "County", "council": ["Board of Supervisors"]},
+    "san-bernardino-county": {"client": "sanbernardino", "name": "San Bernardino", "owner": "County", "council": [
+        "Board of Supervisors Regular Meeting", "Board of Supervisors Special Meeting",
+        "Board of Supervisors Special Meeting - Study Session", "Board of Supervisors Emergency Meeting",
+    ]},
+    "contra-costa-county": {"client": "contra-costa", "name": "Contra Costa", "owner": "County",
+                            "council": ["BOARD OF SUPERVISORS", "Board of Supervisors - Special Meeting"]},
+    "fresno-county": {"client": "fresnocounty", "name": "Fresno", "owner": "County",
+                      "council": ["Board of Supervisors", "Board of Supervisors - Budget Hearings"]},
+    "san-mateo-county": {"client": "sanmateocounty", "name": "San Mateo", "owner": "County", "council": ["BOARD OF SUPERVISORS"]},
+    "sonoma-county": {"client": "sonoma-county", "name": "Sonoma", "owner": "County", "council": ["Board of Supervisors"]},
+    "santa-barbara-county": {"client": "santabarbara", "name": "Santa Barbara", "owner": "County", "council": ["BOARD OF SUPERVISORS"]},
+    "placer-county": {"client": "placerca", "name": "Placer", "owner": "County", "council": ["Board of Supervisors"]},
+    "el-dorado-county": {"client": "eldorado", "name": "El Dorado", "owner": "County", "council": ["Board of Supervisors"]},
+    "humboldt-county": {"client": "humboldt", "name": "Humboldt", "owner": "County", "council": ["Board of Supervisors"]},
+    "mendocino-county": {"client": "mendocino", "name": "Mendocino", "owner": "County", "council": ["Board of Supervisors"]},
+    "tehama-county": {"client": "tehamacounty", "name": "Tehama", "owner": "County", "council": ["Board of Supervisors"]},
+    "lassen-county": {"client": "lassen", "name": "Lassen", "owner": "County",
+                      "council": ["Board of Supervisors", "Board of Supervisors Special Meeting"]},
 }
 # The source does not say which district a member sits for. These are typed in, by the name the source gives: those now
 # serving from each city's own pages, the rest from Wikipedia and what is commonly recorded of each council. A member
@@ -116,7 +138,8 @@ DISTRICTS = {
         "Val Lerch": 9, "Steven Neal": 9, "Councilmember Richardson": 9, "Vice Mayor Richardson": 9, "Councilmember Ricks-Oddie": 9,
     },
 }
-GAP_DAYS = 31  # terms this close together are one time on the council: a member re-elected is sworn in a few days on
+GAP_DAYS = 31
+SEEN_DAYS = 5  # someone with no term on record is a member if they vote at the body's meetings on this many days: once is a clerk's slip  # terms this close together are one time on the council: a member re-elected is sworn in a few days on
 
 ITEM_COLUMNS = ["date", "matter_id", "matter_file", "doc_type", "title", "body", "status", "year", "subject", "agenda_date",
                 "passed_date", "last_action", "last_action_date", "result", "ayes", "noes", "mover", "seconder",
@@ -201,8 +224,8 @@ def terms_of(seats):
 def members_table(records, votes, meetings, bodies, districts=None):
     """Each time someone sat on the council, as the source's terms show it, with the district typed in for them.
 
-    Someone who votes at the council's own meetings and has no term on record is a member too, with no dates. A mayor
-    sits for the whole city, whatever district they sat for before.
+    Someone who votes at the council's own meetings on several days and has no term on record is a member too, with
+    no dates. A mayor sits for the whole city, whatever district they sat for before.
     """
     districts = districts or {}
     rows = terms_of([{
@@ -214,11 +237,13 @@ def members_table(records, votes, meetings, bodies, districts=None):
     } for seat in records if clean(seat.get("OfficeRecordBodyName")) in bodies and seat.get("OfficeRecordStartDate")])
     for row in rows:
         row["serving"] = row["start"] <= county.today() <= (row["end"] or "9999")
-        row["district"] = None if row["role"] == "Mayor" else districts.get(row["name"])
+        said = re.search(r"\bDistrict (\d+)\b", row["role"])  # a few bodies give it in the office's title
+        row["district"] = None if row["role"] == "Mayor" else districts.get(row["name"], int(said[1]) if said else None)
     sat = set(meetings.loc[meetings["body"].isin(bodies), "meeting_id"])
     known = {row["name"] for row in rows}
+    days = votes[votes["meeting_id"].isin(sat)].groupby("member")["date"].nunique()
     rows += [{"name": name, "district": districts.get(name), "role": "", "start": "", "end": "", "serving": False}
-             for name in sorted(set(votes.loc[votes["meeting_id"].isin(sat), "member"]) - known) if name]
+             for name in sorted(days[days >= SEEN_DAYS].index) if name and name not in known]
     out = pd.DataFrame(rows, columns=council_tables.COLUMNS["members"][:6])
     out["district"] = out["district"].astype("Int64")
     cast = votes.groupby("member")["date"].agg(["min", "max", "size"])
@@ -228,8 +253,13 @@ def members_table(records, votes, meetings, bodies, districts=None):
     return out.sort_values(["start", "name"]).reset_index(drop=True)
 
 
+def is_county(key):
+    return CITIES[key].get("owner") == "County"
+
+
 def repo_of(key):
-    return f"chrissoria/{key}-council"
+    """A city's council is chrissoria/<city>-council; a county's board, chrissoria/<county>-county-board."""
+    return f"chrissoria/{key}-{'board' if is_county(key) else 'council'}"
 
 
 def published(key, name):
@@ -315,11 +345,26 @@ def build(key, base, since, out_dir, every=200):
 
 
 def card(key, tables):
-    """The dataset card: the one every city has, with this city's name, addresses and counts written in."""
+    """The dataset card: the one every body has, with this one's name, addresses and counts written in."""
     city, meetings, votes = CITIES[key], tables["meetings"], tables["votes"]
-    read = meetings[meetings["items"] > 0]
+    county = is_county(key)
+    # A stray meeting dated a century on is not the end of the record.
+    soon = (datetime.now(timezone.utc) + timedelta(days=366)).strftime("%Y-%m-%d")
+    read = meetings[(meetings["items"] > 0) & (meetings["date"] <= soon)]
+    texts = ("The papers filed with an item are listed in `attachments`. Their text is not read here."
+             if county else
+             f"The text of ordinances and resolutions is in\n[{key}-ordinances](https://huggingface.co/datasets/chrissoria/{key}-ordinances),"
+             "\nunder the same `matter_id`.")
+    district = ("- The source does not say which district a member sits for. `district` is\n  typed in: for those now serving from the "
+                "City's own pages, for earlier\n  members from Wikipedia and what is commonly recorded. It is empty for a\n  member "
+                "elected by the whole city, such as a mayor or an at-large member, and\n  where the record does not make clear who a name is."
+                if key in DISTRICTS else
+                "- The source does not say which district a member sits for, so `district` is\n  empty.")
     facts = {
-        "name": city["name"], "slug": key, "client": city["client"],
+        "title": f"{city['name']} County Board of Supervisors" if county else f"{city['name']} City Council",
+        "owner": "County" if county else "City", "board": "Board" if county else "Council", "place": city["name"],
+        "tag": "county-government" if county else "city-council", "repo": repo_of(key), "client": city["client"],
+        "texts": texts, "district_note": district,
         "council": " or ".join(f'"{clean(body)}"' for body in city["council"]),
         "first_meeting": read["date"].min() if len(read) else "", "last_meeting": read["date"].max() if len(read) else "",
         "first_vote": votes["date"].min() if len(votes) else "", "last_vote": votes["date"].max() if len(votes) else "",
@@ -338,20 +383,20 @@ def upload(key, tables, out_dir, with_card):
     hub.create_repo(repo, repo_type="dataset", exist_ok=True)
     problem = bills.hf_write_problem(repo)
     if problem:
-        log.error(f"{CITIES[key]['name']} council tables not uploaded: {problem}")
+        log.error(f"{key} tables not uploaded: {problem}")
         return False
     operations = [CommitOperationAdd(path_in_repo=f"data/{name}.parquet", path_or_fileobj=str(out_dir / f"{name}.parquet"))
                   for name in TABLES]
     if (with_card or "README.md" not in set(hub.list_repo_files(repo, repo_type="dataset"))) and CARD_FILE.exists():
         operations.append(CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=card(key, tables).encode("utf-8")))
     hub.create_commit(repo_id=repo, repo_type="dataset", operations=operations,
-                      commit_message=f"Update {CITIES[key]['name']} council tables ({county.today()})")
+                      commit_message=f"Update the tables ({county.today()})")
     return True
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Build a Legistar city's meetings, agendas and votes")
-    parser.add_argument("--city", required=True, choices=sorted(CITIES))
+    parser.add_argument("--city", "--body", required=True, choices=sorted(CITIES), help="the city, or the county, whose council or board to read")
     parser.add_argument("--base", action="store_true", help="read every meeting not yet read, not only the recent ones")
     parser.add_argument("--since", default="", help="with --base, only meetings on or after this day")
     parser.add_argument("--every", type=int, default=200, help="meetings to read between one writing of the tables and the next")
