@@ -45,7 +45,7 @@ BODIES = bodies.chambers()
 PLAIN_ROLES = ("Member", "Councilmember", "Supervisor")  # a role that says no more than that the person sits on the body
 
 # One letter for each way a member's vote is recorded; "-" where the record has none for them.
-VOTE_LETTERS = {"AYE": "A", "NO": "N", "ABSENT": "X", "NOT PRESENT": "X", "EXCUSED": "X", "RECUSED": "R", "ABSTAIN": "S",
+VOTE_LETTERS = {"AYE": "A", "NO": "N", "ABSENT": "X", "NOT PRESENT": "X", "EXCUSED": "X", "RECUSED": "R", "ABSTAIN": "S", "ABSTAINED": "S",
                 "NON-VOTING": "V"}
 RESULT_LETTERS = {"Pass": "P", "Fail": "F"}
 

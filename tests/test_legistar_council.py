@@ -70,23 +70,44 @@ def test_an_item_carries_the_last_thing_done_to_it_and_keeps_its_papers_when_not
     assert "o.pdf" in again.loc["1", "attachments"] and again.loc["2", "attachments"] == "[]"
 
 
+def record(name, start, end, body="City Council", title="Councilmember"):
+    return {"OfficeRecordFullName": name, "OfficeRecordBodyName": body, "OfficeRecordTitle": title, "OfficeRecordMemberType": "Member",
+            "OfficeRecordStartDate": start and start + "T00:00:00", "OfficeRecordEndDate": end and end + "T00:00:00"}
+
+
 def test_the_council_is_those_the_source_seats_on_it_with_when_each_first_and_last_voted():
-    records = [{"OfficeRecordFullName": "Dennis Donohue", "OfficeRecordBodyName": "City Council", "OfficeRecordTitle": "Mayor",
-                "OfficeRecordStartDate": "2024-12-04T00:00:00", "OfficeRecordEndDate": "2099-12-31T00:00:00"},
-               {"OfficeRecordFullName": "Jose Barajas", "OfficeRecordBodyName": "City Council", "OfficeRecordTitle": None,
-                "OfficeRecordMemberType": "Member", "OfficeRecordStartDate": "2020-12-04T00:00:00", "OfficeRecordEndDate": "2024-12-03T00:00:00"},
-               {"OfficeRecordFullName": "A Planner", "OfficeRecordBodyName": "Planning Commission", "OfficeRecordTitle": "Commissioner",
-                "OfficeRecordStartDate": "2024-12-04T00:00:00", "OfficeRecordEndDate": None}]
+    records = [record("Dennis Donohue", "2024-12-04", "2099-12-31", title="Mayor"), record("Jose Barajas", "2020-12-04", "2024-12-03", title=None),
+               record("A Planner", "2024-12-04", None, body="Planning Commission", title="Commissioner")]
     votes = votes_of(vote("1", "Dennis Donohue", "AYE", date="2025-01-07"), vote("2", "Dennis Donohue", "AYE", date="2026-05-13"),
                      vote("2", "Steve McShane", "NO", date="2026-05-13"), vote("3", "A Planner", "AYE", meeting="8"))
     meetings = pd.DataFrame({"meeting_id": ["9", "8"], "body": ["City Council", "Planning Commission"]})
-    council = city.members_table(records, votes, meetings, "City Council").set_index("name")
+    council = city.members_table(records, votes, meetings, {"City Council"}).set_index("name")
     # Steve McShane votes at a council meeting and has no term on record; the planner votes only at the commission.
     assert list(council.index) == ["Steve McShane", "Jose Barajas", "Dennis Donohue"]
     assert council.loc["Steve McShane", ["role", "start", "serving", "votes"]].tolist() == ["", "", False, 1]
     assert council.loc["Dennis Donohue", ["role", "serving", "first_vote", "last_vote", "votes"]].tolist() == ["Mayor", True, "2025-01-07", "2026-05-13", 2]
     assert council.loc["Jose Barajas", ["role", "serving", "votes"]].tolist() == ["Member", False, 0]
     assert council["district"].isna().all()  # the source does not say
+
+
+def test_terms_that_overlap_or_follow_within_a_month_are_one_time_on_the_council():
+    regular, special = "Regular Meeting of the Council", "Special Meeting of the Council"
+    records = [
+        # One member, as the source has him: a term under each name the council sits as, an office within it, and a re-election.
+        record("Kevin Jenkins", "2019-01-07", "2024-12-17", body=regular, title=None), record("Kevin Jenkins", "2019-01-08", "2025-01-05", body=special, title=None),
+        record("Kevin Jenkins", "2021-01-04", "2023-01-02", body=regular, title="President Pro Tem"),
+        # He left to be mayor for some months, and came back: a second time on the council, still running.
+        record("Kevin Jenkins", "2025-05-09", "2027-01-04", body=regular, title="President"), record("Kevin Jenkins", "2026-04-13", None, body=special, title=None),
+        # Sworn in again five days after the first term ran out.
+        record("Noel Gallo", "2013-01-07", "2017-01-02", body=regular, title=None), record("Noel Gallo", "2017-01-07", "2021-01-04", body=regular, title=None),
+        record("A Youth", "2020-01-01", "2021-01-01", body="Joint Meeting of the Council and the Youth Commission", title=None),
+    ]
+    table = city.members_table(records, votes_of(), pd.DataFrame({"meeting_id": [], "body": []}), {regular, special})
+    assert table[["name", "role", "start", "end", "serving"]].values.tolist() == [
+        ["Noel Gallo", "Member", "2013-01-07", "2021-01-04", False],
+        ["Kevin Jenkins", "President Pro Tem", "2019-01-07", "2025-01-05", False],
+        ["Kevin Jenkins", "Member", "2025-05-09", "", True],
+    ]
 
 
 def test_the_tables_are_in_the_shape_every_councils_are_with_the_citys_own_columns_after():
@@ -96,7 +117,7 @@ def test_the_tables_are_in_the_shape_every_councils_are_with_the_citys_own_colum
     votes = votes_of(vote("1", "Dennis Donohue", "AYE"))
     meetings = county.meetings_table([{"EventId": 9, "EventDate": "2026-05-13T00:00:00", "EventBodyName": "City Council"}])
     tables = council_tables.standard({"items": city.items_table(matters, agenda, {}, None), "meetings": meetings, "agenda_items": agenda,
-                                      "votes": votes, "members": city.members_table([], votes, meetings, "City Council")})
+                                      "votes": votes, "members": city.members_table([], votes, meetings, {"City Council"})})
     for name in council_tables.TABLES:
         shared = council_tables.COLUMNS[name]
         assert list(tables[name].columns[:len(shared)]) == shared

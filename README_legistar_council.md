@@ -120,18 +120,21 @@ the City's own word in capitals: `ABSENT`, `EXCUSED`, `ABSTAIN`, `RECUSED`.
 
 ### members
 
-One row per term the system records on the body the City calls
-"{council}": `name`, `role`, `start`, `end`, and whether the term covers today
-(`serving`). `first_vote`, `last_vote` and `votes` are counted from the votes
-here, in any body. Someone who votes at that body's meetings and has no term
+One row for each unbroken time someone sat on the Council: `name`, `role`,
+`start`, `end`, and whether that time covers today (`serving`). The system
+keeps a term for every office a member holds and every name the Council sits
+under; terms that overlap, or follow one another within a month, are one row
+here, with the role of the latest. The Council sits in this system as
+{council}. `first_vote`, `last_vote` and `votes` are counted from the votes
+here, in any body. Someone who votes at the Council's meetings and has no term
 on record has a row too, with no dates.
 
 ## What to know
 
 - The source does not say which district a member sits for, so `district` is
   empty.
-- A member's `start` and `end` are the term the system has on record, which
-  for someone re-elected may be the latest term and not the first.
+- A member's `start` and `end` are as good as the terms the system has on
+  record; `first_vote` and `last_vote` show when they are actually seen.
 - A vote the clerk entered twice is here once.
 - A vote is here only if the clerk entered it by member. An item passed
   without a recorded roll call has an `action` and no rows in `votes`.

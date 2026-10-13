@@ -58,13 +58,21 @@ OUT_DIR = bills.SCRIPT_DIR / "legistar"
 CARD_FILE = bills.SCRIPT_DIR / "README_legistar_council.md"  # one card for every city, with the city's own facts written in
 TABLES = council_tables.TABLES
 
-# `client` is the city's name in the API's address; `council` is what the source calls the body its members sit on.
+# `client` is the city's name in the API's address; `council` is what the source calls the council when it sits. Oakland's
+# sits under several names, as itself and as the agencies its members also are; a joint meeting with another body is not one.
 CITIES = {
-    "oakland": {"client": "oakland", "name": "Oakland", "council": "Meeting of the Oakland City Council"},
-    "long-beach": {"client": "longbeach", "name": "Long Beach", "council": "City Council"},
-    "fresno": {"client": "fresno", "name": "Fresno", "council": "City Council"},
-    "salinas": {"client": "salinas", "name": "Salinas", "council": "City Council"},
+    "oakland": {"client": "oakland", "name": "Oakland", "council": [
+        "Meeting of the Oakland City Council",
+        "* Concurrent Meeting of the Oakland Redevelopment Successor Agency and the City Council",
+        "Concurrent Meeting of the Oakland Redevelopment Agency / City Council",
+        "Special Concurrent Meeting of the Oakland Redevelopment Successor Agency/City Council",
+        "*Special Concurrent Meeting of the Oakland Redevelopment Agency/City Council",
+    ]},
+    "long-beach": {"client": "longbeach", "name": "Long Beach", "council": ["City Council"]},
+    "fresno": {"client": "fresno", "name": "Fresno", "council": ["City Council"]},
+    "salinas": {"client": "salinas", "name": "Salinas", "council": ["City Council"]},
 }
+GAP_DAYS = 31  # terms this close together are one time on the council: a member re-elected is sworn in a few days on
 
 ITEM_COLUMNS = ["date", "matter_id", "matter_file", "doc_type", "title", "body", "status", "year", "subject", "agenda_date",
                 "passed_date", "last_action", "last_action_date", "result", "ayes", "noes", "mover", "seconder",
@@ -127,21 +135,40 @@ def items_table(matters, agenda, papers, previous):
     return out.sort_values(["date", "matter_id"], ascending=[False, False]).reset_index(drop=True)
 
 
-def members_table(records, votes, meetings, body):
-    """Each term the source records on the council. It does not say which district a member sits for.
+def terms_of(seats):
+    """One row for each unbroken time a person sat: terms on record that overlap, or follow within a month, are one.
+
+    The source keeps a term for each office held and each name the council sits under, so one time on the council is
+    many records. The role is that of the record that starts last; a record with no end leaves the time open.
+    """
+    rows = []
+    for seat in sorted(seats, key=lambda seat: (seat["name"], seat["start"])):
+        last = rows[-1] if rows else None
+        close = last and last["name"] == seat["name"] and (
+            not last["end"] or seat["start"] <= (pd.Timestamp(last["end"]) + pd.Timedelta(days=GAP_DAYS)).strftime("%Y-%m-%d"))
+        if close:
+            last["end"] = "" if not last["end"] or not seat["end"] else max(last["end"], seat["end"])
+            last["role"] = seat["role"] or last["role"]
+        else:
+            rows.append(dict(seat))
+    return rows
+
+
+def members_table(records, votes, meetings, bodies):
+    """Each time someone sat on the council, as the source's terms show it. It does not say which district a member sits for.
 
     Someone who votes at the council's own meetings and has no term on record is a member too, with no dates.
     """
-    seats = [r for r in records if clean(r.get("OfficeRecordBodyName")) == body]
-    rows = [{
+    rows = terms_of([{
         "name": clean(seat["OfficeRecordFullName"]),
         "district": None,
         "role": clean(seat.get("OfficeRecordTitle")) or clean(seat.get("OfficeRecordMemberType")),
         "start": day_of(seat.get("OfficeRecordStartDate")),
         "end": day_of(seat.get("OfficeRecordEndDate")),
-        "serving": day_of(seat.get("OfficeRecordStartDate")) <= county.today() <= (day_of(seat.get("OfficeRecordEndDate")) or "9999"),
-    } for seat in seats]
-    sat = set(meetings.loc[meetings["body"] == body, "meeting_id"])
+    } for seat in records if clean(seat.get("OfficeRecordBodyName")) in bodies and seat.get("OfficeRecordStartDate")])
+    for row in rows:
+        row["serving"] = row["start"] <= county.today() <= (row["end"] or "9999")
+    sat = set(meetings.loc[meetings["body"].isin(bodies), "meeting_id"])
     known = {row["name"] for row in rows}
     rows += [{"name": name, "district": None, "role": "", "start": "", "end": "", "serving": False}
              for name in sorted(set(votes.loc[votes["meeting_id"].isin(sat), "member"]) - known) if name]
@@ -151,7 +178,7 @@ def members_table(records, votes, meetings, body):
     out["first_vote"] = out["name"].map(cast["min"]).fillna("")
     out["last_vote"] = out["name"].map(cast["max"]).fillna("")
     out["votes"] = out["name"].map(cast["size"]).fillna(0).astype(int)
-    return out.drop_duplicates(["name", "start"]).sort_values(["start", "name"]).reset_index(drop=True)
+    return out.sort_values(["start", "name"]).reset_index(drop=True)
 
 
 def held(out_dir, name):
@@ -208,7 +235,8 @@ def build(city, base, since, out_dir, every=200):
         write_tables(tables, out_dir)
         read += len(done)
         log.info(f"{city['name']}: {min(start + every, len(wanted))} of {len(wanted)} meetings asked for, {len(votes)} votes held")
-    tables["members"] = members_table(county.paged("officerecords", orderby="OfficeRecordId"), votes, meetings, city["council"])
+    tables["members"] = members_table(county.paged("officerecords", orderby="OfficeRecordId"), votes, meetings,
+                                      {clean(body) for body in city["council"]})
     tables = council_tables.standard(tables)
     write_tables(tables, out_dir)
     return tables, read
@@ -223,7 +251,8 @@ def card(key, tables):
     city, meetings, votes = CITIES[key], tables["meetings"], tables["votes"]
     read = meetings[meetings["items"] > 0]
     facts = {
-        "name": city["name"], "slug": key, "client": city["client"], "council": city["council"],
+        "name": city["name"], "slug": key, "client": city["client"],
+        "council": " or ".join(f'"{clean(body)}"' for body in city["council"]),
         "first_meeting": read["date"].min() if len(read) else "", "last_meeting": read["date"].max() if len(read) else "",
         "first_vote": votes["date"].min() if len(votes) else "", "last_vote": votes["date"].max() if len(votes) else "",
         "bodies": f"{meetings['body'].nunique():,}",
