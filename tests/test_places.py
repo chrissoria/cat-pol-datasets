@@ -96,6 +96,9 @@ def test_a_body_is_a_row_with_its_place_its_room_and_the_way_in():
     county = found.loc["sd-county"]
     assert county["map"] == "#county=06073" and county["world"] is None and county["chamber_file"] is None
     assert found.loc["ca-legislature", "map"] == "#state=CA"
+    # A county board's room is a file of its own in the one dataset of county boards.
+    board = {**BODIES[1], "chamber": {"repo": "x/boards", "tables": "raw/fresno", "file": "world/fresno/chamber.json.gz", "members": "members"}}
+    assert places.bodies_table(table(), [board])["chamber_file"].tolist() == ["https://huggingface.co/datasets/x/boards/resolve/main/world/fresno/chamber.json.gz"]
 
 
 def test_the_file_the_app_reads_lists_the_bodies_and_leaves_out_what_is_empty():

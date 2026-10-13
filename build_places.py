@@ -867,7 +867,8 @@ def bodies_table(places, bodies):
             "site": body.get("site"), "site_url": body.get("url"), "since": body.get("since"),
             "datasets": json.dumps([dataset["repo"] for dataset in body.get("datasets", [])]),
             "world": body.get("world"), "world_url": world_url(body.get("world"), body["place"]),
-            "chamber_file": f"https://huggingface.co/datasets/{chamber['repo']}/resolve/main/world/chamber.json.gz" if chamber else None,
+            "chamber_file": (f"https://huggingface.co/datasets/{chamber['repo']}/resolve/main/{chamber.get('file', 'world/chamber.json.gz')}"
+                             if chamber else None),
             "map": map_address({**place.to_dict(), "place_id": body["place"]}),
         })
     return pd.DataFrame(rows, columns=BODY_COLUMNS)

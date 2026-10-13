@@ -24,6 +24,7 @@ through standard() before writing them. All but the first two also keep and
 publish their tables through the functions at the foot of this file.
 """
 
+import re
 from pathlib import Path
 
 TABLES = ("items", "meetings", "agenda_items", "votes", "members")
@@ -71,13 +72,28 @@ def standard(tables):
 # Keeping and publishing the tables
 # ---------------------------------------------------------------------------
 
+# A county's board has no dataset of its own. Its tables are that county's files in the one dataset of county boards
+# (build_ca_county_boards.py): as its reader wrote them under raw/<county>/, and in the shape every county has under data/.
+# A reader still names where its tables go as it always did, "chrissoria/<county>-county-board", and is sent on from here.
+COUNTY_BOARDS = "chrissoria/ca-county-boards"
+BOARD = re.compile(r"chrissoria/([a-z-]+-county)-board")
+
+
+def board_of(repo):
+    """The county whose board a reader's tables are for ("fresno-county"), or None if `repo` is a dataset of its own."""
+    found = BOARD.fullmatch(repo)
+    return found[1] if found else None
+
+
 def published(repo, name):
-    """A table of a dataset as last published, or None."""
+    """A table of a dataset as last published, or None. A county board's is the one its reader last wrote."""
     import pandas as pd
     import build_federal_bills as bills
+    county = board_of(repo)
+    place, file = (COUNTY_BOARDS, f"raw/{county[:-len('-county')]}/{name}.parquet") if county else (repo, f"data/{name}.parquet")
     try:
         from huggingface_hub import hf_hub_download
-        return pd.read_parquet(hf_hub_download(repo, f"data/{name}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
+        return pd.read_parquet(hf_hub_download(place, file, repo_type="dataset", token=bills.HF_TOKEN))
     except Exception:
         return None
 
@@ -104,8 +120,15 @@ def write_tables(tables, out_dir):
 
 
 def publish(repo, out_dir, card, with_card, message):
-    """Publish the five tables written in `out_dir`, and the card if asked for or if the dataset has none. False if not allowed."""
+    """Publish the five tables written in `out_dir`, and the card if asked for or if the dataset has none.
+
+    A county board's tables go into the one dataset of county boards, as that county's files; the card there is the one
+    card for all of them, so `card` is not used. Raises PermissionError if the token may not write.
+    """
     import build_federal_bills as bills
+    if board_of(repo):
+        import build_ca_county_boards
+        return build_ca_county_boards.publish_county(board_of(repo), out_dir)
     from huggingface_hub import CommitOperationAdd, HfApi
     hub = HfApi(token=bills.HF_TOKEN)
     hub.create_repo(repo, repo_type="dataset", exist_ok=True)

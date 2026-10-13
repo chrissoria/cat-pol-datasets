@@ -80,9 +80,20 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   those passed since; `--texts` reads the scans by OCR. It replaces
   `build_berkeley_dataset.py`, which read the municipal code's table of
   enactments through a browser to get past a bot check.
-- The same builder reads a county's board of supervisors where the county
-  keeps its record in Legistar (`--city fresno-county`), into
-  `<county>-county-board`: San Bernardino, Contra Costa, Fresno, San Mateo,
+- **County boards are one dataset,
+  [`ca-county-boards`](https://huggingface.co/datasets/chrissoria/ca-county-boards)**,
+  to be filtered by county: 32 California boards of supervisors in the same
+  tables with the same columns, a file a county within each table, and a
+  `counties` table that says how each county's record was read and what to
+  know of it. `build_ca_county_boards.py` makes it from the tables each
+  county's reader writes; it reads nothing from a county itself. A reader run
+  without `--no-upload` publishes its county there (it names
+  `<county>-county-board` as it always did, and `council_tables.py` sends it
+  on), so reading a county again is one command. The daily run copies San
+  Diego County in and reads the Legistar counties again by turns
+  (`--read --minutes 30`).
+- The Legistar builder reads a county's board of supervisors where the county
+  keeps its record in Legistar (`--city fresno-county`): San Bernardino, Contra Costa, Fresno, San Mateo,
   Sonoma, Santa Barbara, Placer, El Dorado, Humboldt, Napa, Nevada, Mendocino,
   Lake, Tehama and Lassen so far.
 - Counties on other systems have a reader for each system, all with the same

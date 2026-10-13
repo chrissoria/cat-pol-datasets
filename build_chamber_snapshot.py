@@ -238,7 +238,8 @@ def read_tables(body, folder=None):
     if folder:
         return {name: pd.read_parquet(Path(folder) / f"{file}.parquet") for name, file in files.items()}
     from huggingface_hub import hf_hub_download
-    return {name: pd.read_parquet(hf_hub_download(body["repo"], f"data/{file}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
+    where = body.get("tables", "data")  # a county board's are under raw/<county>/ in the one dataset of county boards
+    return {name: pd.read_parquet(hf_hub_download(body["repo"], f"{where}/{file}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
             for name, file in files.items()}
 
 
@@ -250,13 +251,13 @@ def write(snapshot, out_dir):
     return path
 
 
-def upload(path, repo):
+def upload(path, repo, file=FILE):
     problem = bills.hf_write_problem(repo)
     if problem:
         log.error(f"Chamber file not uploaded: {problem}")
         return False
     from huggingface_hub import HfApi
-    HfApi(token=bills.HF_TOKEN).upload_file(path_or_fileobj=str(path), path_in_repo=FILE, repo_id=repo, repo_type="dataset",
+    HfApi(token=bills.HF_TOKEN).upload_file(path_or_fileobj=str(path), path_in_repo=file, repo_id=repo, repo_type="dataset",
                                             commit_message="Update the file Capitol World reads")
     return True
 
@@ -275,7 +276,7 @@ def main(argv=None):
         log.error(f"Chamber file not built: {type(e).__name__}: {e}")
         return 1
     path = write(snapshot, args.out or bills.SCRIPT_DIR / body["folder"])
-    pushed = False if args.no_upload else upload(path, body["repo"])
+    pushed = False if args.no_upload else upload(path, body["repo"], body.get("file", FILE))
     log.info(f"RESULT: chamber-file body={args.body} members={len(snapshot['members'])} items={len(snapshot['items']['id'])} "
              f"meetings={len(snapshot['meetings']['id'])} agenda={len(snapshot['agenda']['item'])} "
              f"through={snapshot['data_through']} kilobytes={path.stat().st_size // 1024} pushed={pushed}")

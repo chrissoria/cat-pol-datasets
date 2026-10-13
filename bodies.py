@@ -21,7 +21,10 @@ and, once it has a room in Capitol World:
 
     world         "chamber" for a board or council in one room; a world's own key otherwise
     chamber       where its tables are published and kept here, and what its table of
-                  members is called; and, for a record too long to load as one file,
+                  members is called; where in the dataset its tables and its room's
+                  file are, if not in the usual places (`tables`, `file`: a county board's
+                  are its own folders in the one dataset of county boards); and, for a
+                  record too long to load as one file,
                   the day its room starts (`from`) and the most letters a title is
                   shown at (`titles`)
     short, room, member, seat, timezone, site, url, since
