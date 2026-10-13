@@ -120,7 +120,7 @@ the City's own word in capitals: `ABSENT`, `EXCUSED`, `ABSTAIN`, `RECUSED`.
 
 ### members
 
-One row for each unbroken time someone sat on the Council: `name`, `role`,
+One row for each unbroken time someone sat on the Council: `name`, `district`, `role`,
 `start`, `end`, and whether that time covers today (`serving`). The system
 keeps a term for every office a member holds and every name the Council sits
 under; terms that overlap, or follow one another within a month, are one row
@@ -131,8 +131,11 @@ on record has a row too, with no dates.
 
 ## What to know
 
-- The source does not say which district a member sits for, so `district` is
-  empty.
+- The source does not say which district a member sits for. `district` is
+  typed in: for those now serving from the City's own pages, for earlier
+  members from Wikipedia and what is commonly recorded. It is empty for a
+  member elected by the whole city, such as a mayor or an at-large member, and
+  where the record does not make clear who a name is.
 - A member's `start` and `end` are as good as the terms the system has on
   record; `first_vote` and `last_vote` show when they are actually seen.
 - A vote the clerk entered twice is here once.

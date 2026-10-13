@@ -73,6 +73,49 @@ CITIES = {
     "fresno": {"client": "fresno", "name": "Fresno", "council": ["City Council"]},
     "salinas": {"client": "salinas", "name": "Salinas", "council": ["City Council"]},
 }
+# The source does not say which district a member sits for. These are typed in, by the name the source gives: those now
+# serving from each city's own pages, the rest from Wikipedia and what is commonly recorded of each council. A member
+# elected by the whole city (Oakland's at-large seat, a mayor who sits on the council) has no district and is not here.
+# Long Beach's record names two members "Vice Mayor Lowenthal", of different districts, so that name has none either.
+DISTRICTS = {
+    "oakland": {
+        "Jane Brunner": 1, "Dan Kalb": 1, "Zac Unger": 1,
+        "Danny Wan": 2, "Wan, Danny": 2, "Patricia Kernighan": 2, "Abel J. Guillén": 2, "Nikki Fortunato Bas": 2, "Charlene Wang": 2,
+        "Nancy Nadel": 3, "Lynette McElhaney": 3, "Carroll Fife": 3,
+        "Dick Spees": 4, "Jean Quan": 4, "Libby Schaaf": 4, "Annie Campbell Washington": 4, "Sheng Thao": 4, "Janani Ramachandran": 4,
+        "Ignacio De La Fuente": 5, "Noel Gallo": 5, "Noel Gallo --": 5,
+        "Nate Miley": 6, "Moses Mayne": 6, "Desley Brooks": 6, "Loren Taylor": 6, "Kevin Jenkins": 6,
+        "Laurence E. Reid": 7, "Larry Reid": 7, "Treva Reid": 7, "Ken Houston": 7,
+    },
+    "fresno": {
+        "Blong Xiong": 1, "Esmeralda Z. Soria": 1, "Annalisa Perea": 1,
+        "Steve Brandau": 2, "Mike Karbassi": 2,
+        "Oliver L. Baines III": 3, "Miguel Angel Arias": 3,
+        "Paul Caprioglio": 4, "Tyler Maxwell": 4,
+        "Sal Quintero": 5, "Luis Chavez": 5, "Brandon Vang": 5,
+        "Lee Brand": 6, "Garry Bredefeld": 6, "Nick Richardson": 6,
+        "Clinton Olivier": 7, "Nelson Esparza": 7,
+    },
+    "salinas": {
+        "Jose Castañeda": 1, "Scott Davis": 1, "Carla Viviana Gonzalez": 1, "Jose Barajas": 1,
+        "Tony Barrera": 2,
+        "Steve McShane": 3, "Jesus Valenzuela": 3, "Margaret D'Arrigo": 3,
+        "Gloria De La Rosa": 4, "Orlando Osornio": 4,
+        "Kimbley Craig": 5, "Christie Cromeenes": 5, "Jose Andrew Sandoval": 5,
+        "Jyl Lutes": 6, "John Villegas": 6, "Anthony Rocha": 6, "Aurelio Salazar": 6,
+    },
+    "long-beach": {
+        "Bonnie Lowenthal": 1, "Robert Garcia": 1, "Councilwoman Gonzalez": 1, "Councilwoman Zendejas": 1,
+        "Dan Baker": 2, "Suja S. Lowenthal": 2, "Councilmember Pearce": 2, "Councilwoman Pearce": 2, "Councilwoman Allen": 2, "Vice Mayor Allen": 2,
+        "Frank Colonna": 3, "Gary DeLong": 3, "Councilwoman Price": 3, "Councilmember Duggan": 3,
+        "Dennis Carroll": 4, "Councilmember O'Donnell": 4, "Councilman Supernaw": 4,
+        "Jackie Kell": 5, "Gerrie Schipske": 5, "Councilwoman Mungo": 5, "Councilwoman Kerr": 5,
+        "Laura Richardson": 6, "Councilman Andrews": 6, "Dee Andrews": 6, "Councilwoman Saro": 6,
+        "Tonia Reyes Uranga": 7, "James Johnson": 7, "Councilmember Uranga": 7,
+        "Rob Webb": 8, "Rae Gabelich": 8, "Councilman Austin": 8,
+        "Val Lerch": 9, "Steven Neal": 9, "Councilmember Richardson": 9, "Vice Mayor Richardson": 9, "Councilmember Ricks-Oddie": 9,
+    },
+}
 GAP_DAYS = 31  # terms this close together are one time on the council: a member re-elected is sworn in a few days on
 
 ITEM_COLUMNS = ["date", "matter_id", "matter_file", "doc_type", "title", "body", "status", "year", "subject", "agenda_date",
@@ -155,11 +198,13 @@ def terms_of(seats):
     return rows
 
 
-def members_table(records, votes, meetings, bodies):
-    """Each time someone sat on the council, as the source's terms show it. It does not say which district a member sits for.
+def members_table(records, votes, meetings, bodies, districts=None):
+    """Each time someone sat on the council, as the source's terms show it, with the district typed in for them.
 
-    Someone who votes at the council's own meetings and has no term on record is a member too, with no dates.
+    Someone who votes at the council's own meetings and has no term on record is a member too, with no dates. A mayor
+    sits for the whole city, whatever district they sat for before.
     """
+    districts = districts or {}
     rows = terms_of([{
         "name": clean(seat["OfficeRecordFullName"]),
         "district": None,
@@ -169,9 +214,10 @@ def members_table(records, votes, meetings, bodies):
     } for seat in records if clean(seat.get("OfficeRecordBodyName")) in bodies and seat.get("OfficeRecordStartDate")])
     for row in rows:
         row["serving"] = row["start"] <= county.today() <= (row["end"] or "9999")
+        row["district"] = None if row["role"] == "Mayor" else districts.get(row["name"])
     sat = set(meetings.loc[meetings["body"].isin(bodies), "meeting_id"])
     known = {row["name"] for row in rows}
-    rows += [{"name": name, "district": None, "role": "", "start": "", "end": "", "serving": False}
+    rows += [{"name": name, "district": districts.get(name), "role": "", "start": "", "end": "", "serving": False}
              for name in sorted(set(votes.loc[votes["meeting_id"].isin(sat), "member"]) - known) if name]
     out = pd.DataFrame(rows, columns=council_tables.COLUMNS["members"][:6])
     out["district"] = out["district"].astype("Int64")
@@ -260,7 +306,7 @@ def build(key, base, since, out_dir, every=200):
         read += len(done)
         log.info(f"{city['name']}: {min(start + every, len(wanted))} of {len(wanted)} meetings asked for, {len(votes)} votes held")
     tables["members"] = members_table(county.paged("officerecords", orderby="OfficeRecordId"), votes, meetings,
-                                      {clean(body) for body in city["council"]})
+                                      {clean(body) for body in city["council"]}, DISTRICTS.get(key))
     tables = council_tables.standard(tables)
     write_tables(tables, out_dir)
     if len(votes) < before * 0.98:

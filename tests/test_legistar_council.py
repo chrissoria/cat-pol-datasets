@@ -87,7 +87,19 @@ def test_the_council_is_those_the_source_seats_on_it_with_when_each_first_and_la
     assert council.loc["Steve McShane", ["role", "start", "serving", "votes"]].tolist() == ["", "", False, 1]
     assert council.loc["Dennis Donohue", ["role", "serving", "first_vote", "last_vote", "votes"]].tolist() == ["Mayor", True, "2025-01-07", "2026-05-13", 2]
     assert council.loc["Jose Barajas", ["role", "serving", "votes"]].tolist() == ["Member", False, 0]
-    assert council["district"].isna().all()  # the source does not say
+    assert council["district"].isna().all()  # the source does not say, and none were typed in for these
+
+
+def test_a_district_is_typed_in_by_name_and_a_mayor_has_none():
+    records = [record("Kimbley Craig", "2010-12-31", "2018-12-05"), record("Kimbley Craig", "2020-12-08", "2024-12-03", title="Mayor"),
+               record("Tony Barrera", "2010-11-02", "2099-12-31")]
+    votes = votes_of(vote("1", "Steve McShane", "AYE"))
+    meetings = pd.DataFrame({"meeting_id": ["9"], "body": ["City Council"]})
+    table = city.members_table(records, votes, meetings, {"City Council"}, {"Kimbley Craig": 5, "Tony Barrera": 2, "Steve McShane": 3})
+    assert table[["name", "role", "district"]].astype(object).where(table[["name", "role", "district"]].notna(), None).values.tolist() == [
+        ["Steve McShane", "", 3], ["Tony Barrera", "Councilmember", 2], ["Kimbley Craig", "Councilmember", 5], ["Kimbley Craig", "Mayor", None]]
+    every = {name for names in city.DISTRICTS.values() for name in names}
+    assert all(isinstance(d, int) and 1 <= d <= 9 for names in city.DISTRICTS.values() for d in names.values()) and "Vice Mayor Lowenthal" not in every
 
 
 def test_terms_that_overlap_or_follow_within_a_month_are_one_time_on_the_council():
