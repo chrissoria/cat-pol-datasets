@@ -66,6 +66,9 @@ LOCAL_STEPS = (
     ("build_legistar_council", ["--city", "fresno"], "Fresno council tables"),
     ("build_legistar_council", ["--city", "salinas"], "Salinas council tables"),
     ("build_berkeley", [], "Berkeley ordinances"),
+    # Last, since it is the longest: San Diego County's tables copied into the one dataset of county boards, and the
+    # counties longest unread read again for half an hour. Each county's turn comes every few days.
+    ("build_ca_county_boards", ["--read", "--minutes", "30"], "County boards"),
 )
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)

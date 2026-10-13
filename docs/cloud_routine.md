@@ -127,12 +127,13 @@ hold only the measures that were chaptered.
 ### Local bodies
 
 After California the run brings six local datasets up to date, one after
-another. They are listed in `LOCAL_STEPS` in `build_federal_bills.py`, and none
+another, and then the county boards (below). They are listed in `LOCAL_STEPS` in `build_federal_bills.py`, and none
 can fail the run: a step that cannot reach its source or may not write logs one
 ERROR line saying which, and the next step starts. Each starts from its own
 published tables, since the repository is cloned afresh for every run, reads
 what is recent again, and refuses to publish fewer rows than are published.
-Together they take about ten minutes.
+Together they take about ten minutes; the county boards take up to half an
+hour more.
 
 | Step | Dataset | Reads | Hosts to allow |
 |---|---|---|---|
@@ -142,9 +143,34 @@ Together they take about ten minutes.
 | `build_legistar_council.py --city fresno` | `fresno-council` | the same | `webapi.legistar.com` |
 | `build_legistar_council.py --city salinas` | `salinas-council` | the same | `webapi.legistar.com` |
 | `build_berkeley.py` | `berkeley-ordinances` | the City Clerk's list of ordinances | `records.cityofberkeley.info` |
+| `build_ca_county_boards.py --read --minutes 30` | `ca-county-boards` | San Diego County's tables as the first step just wrote them; then the county boards longest unread, their meetings of the last 60 days | `webapi.legistar.com` |
 
-The cloud token needs write access to each of the six datasets, all under
-`chrissoria/`. The San Diego council step needs `beautifulsoup4` in the
+**The county boards** are one dataset, `chrissoria/ca-county-boards`, a file
+a county within each table. The last step copies San Diego County into it and
+then calls the reader of each county marked `daily` in
+`build_ca_county_boards.py` (`COUNTIES`), the one read longest ago first,
+starting no county after 30 minutes. A county's turn so comes every few days,
+which is as often as a board meets. Each county publishes itself as it is
+read: its files under `data/` and `raw/`, its line in `data/counties.parquet`
+(`read_on` is the day), and the card. The step asks first whether the token
+may write to the dataset, and reads nothing if it may not.
+
+Marked `daily` now are the fifteen counties whose record is in Legistar, whose
+host the run already reaches. To add a county on another system: allow its
+host in the environment, add its reader to `READERS` and `"daily": True` to
+its entry. The hosts are `<county>.api.civicclerk.com` (seven counties),
+`<county>.iqm2.com` (four), `tularecounty.primegov.com`,
+`public.destinyhosted.com`; the three read from PDFs (`file.lacounty.gov` and
+the search its page uses, `ocagendaext.oc.gov`, `agendanet.saccounty.gov`)
+also need `pdfplumber` and `pypdfium2`, and are slower.
+
+The step reports `RESULT: county-boards read=<n> failed=<n> waiting=<n>
+minutes=<m> counties=<those read> pushed=<True|False>`, after a
+`RESULT: legistar-<county> …` line for each county read. `waiting` is how many
+had no turn today.
+
+The cloud token needs write access to each of the six datasets and to
+`ca-county-boards`, all under `chrissoria/`. The San Diego council step needs `beautifulsoup4` in the
 environment and fails without it (`cloud_setup.sh` installs it; the
 environment's own setup script has to be the current contents of that file).
 `pdfplumber` in the environment (`cloud_setup.sh` installs it if
@@ -212,7 +238,8 @@ variables are visible to anyone who uses the environment.
   The later steps each name the hosts and the write access they need where
   they are described in §1. For the local bodies that is four more hosts
   (`webapi.legistar.com`, `sdcounty.legistar1.com`, `sandiego.hylandcloud.com`,
-  `records.cityofberkeley.info`) and write access to six more datasets.
+  `records.cityofberkeley.info`) and write access to seven more datasets, the
+  seventh being `ca-county-boards`, which holds every county board.
 
 **c. The routine.** Daily at 13:00 UTC (06:00 PDT, 05:00 PST), with this
 repository attached as a source, the environment from (b), the prompt from §4,
