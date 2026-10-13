@@ -80,7 +80,24 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   those passed since; `--texts` reads the scans by OCR. It replaces
   `build_berkeley_dataset.py`, which read the municipal code's table of
   enactments through a browser to get past a bot check.
-- `council_tables.py` is the one shape those three builders write: five tables
+- The same builder reads a county's board of supervisors where the county
+  keeps its record in Legistar (`--city fresno-county`), into
+  `<county>-county-board`: Fresno, Sonoma, Mendocino, San Mateo, Lassen,
+  Santa Barbara, Humboldt and Placer so far.
+- Counties on other systems have a reader for each system, all with the same
+  options (`--county`, `--base`, `--no-upload`, `--write-card`) and the same
+  five tables: `build_civicclerk_board.py` (Alpine, Colusa, Del Norte,
+  Mariposa, Modoc, Plumas, Tuolumne), `build_primegov_board.py` (Tulare),
+  `build_iqm2_board.py` (San Joaquin, Santa Cruz, Sutter; Santa Clara being
+  read), `build_destiny_board.py` (Yolo) and `build_granicus_board.py` (Glenn,
+  Butte, Marin; not published).
+- Five counties publish how each supervisor voted only in PDF documents, and
+  have a reader each that takes it from the documents' own text:
+  `build_sacramento_board.py`, `build_orange_board.py`,
+  `build_la_county_board.py`, `build_alameda_board.py` and
+  `build_stanislaus_board.py` (the last two not published). A vote there is
+  read whole or not at all; what could not be read is marked, not guessed.
+- `council_tables.py` is the one shape all of these builders write: five tables
   (`items`, `meetings`, `agenda_items`, `votes`, `members`), each with the same
   columns first and a body's own after them, and one spelling of aye and no.
   A new council or board is written to it, so any two can be set one on the
