@@ -16,6 +16,8 @@ if ! $PY -m pip install --quiet "${PKGS[@]}"; then
   echo "cloud_setup: plain install failed; retrying over distro-managed packages (--ignore-installed)"
   $PY -m pip install --quiet --ignore-installed "${PKGS[@]}"
 fi
+# build_sd_council.py reads the City Clerk's pages with this, and cannot go without.
+$PY -m pip install --quiet "beautifulsoup4>=4.12" || echo "cloud_setup: beautifulsoup4 not installed; the San Diego council step will fail"
 # Only build_sd_county.py wants this, for PDF documents, and it goes without if it has to.
 $PY -m pip install --quiet "pdfplumber>=0.10" || echo "cloud_setup: pdfplumber not installed; PDF documents will be skipped"
 $PY -c 'import pandas, pyarrow, requests, dotenv, datasets, huggingface_hub; print("setup ok")'

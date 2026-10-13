@@ -144,7 +144,10 @@ Together they take about ten minutes.
 | `build_berkeley.py` | `berkeley-ordinances` | the City Clerk's list of ordinances | `records.cityofberkeley.info` |
 
 The cloud token needs write access to each of the six datasets, all under
-`chrissoria/`. `pdfplumber` in the environment (`cloud_setup.sh` installs it if
+`chrissoria/`. The San Diego council step needs `beautifulsoup4` in the
+environment and fails without it (`cloud_setup.sh` installs it; the
+environment's own setup script has to be the current contents of that file).
+`pdfplumber` in the environment (`cloud_setup.sh` installs it if
 it can) lets the County step read the items whose document is a PDF; without
 it those wait (`pdf=skipped`) and Word documents are still read.
 
