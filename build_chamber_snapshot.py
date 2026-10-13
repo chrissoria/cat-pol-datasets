@@ -17,6 +17,11 @@ parallel:
               tally, and how each member voted, as one letter per member in
               the order of `members` (see VOTE_LETTERS)
 
+A body's entry in bodies.json may give its room a first day (`from`) and a
+length for titles (`titles`): a record of many decades is a download of many
+megabytes, so such a room shows the years from that day and the dataset has
+the rest.
+
     python build_chamber_snapshot.py                      # San Diego County, published
     python build_chamber_snapshot.py --body sd-council    # the San Diego City Council
     python build_chamber_snapshot.py --tables sdcounty --no-upload
@@ -42,7 +47,8 @@ FILE = "world/chamber.json.gz"
 TABLES = ("items", "meetings", "agenda_items", "votes")
 # The bodies that have a file: where each one's tables are published and kept here, and what its table of members is called.
 BODIES = bodies.chambers()
-PLAIN_ROLES = ("Member", "Councilmember", "Supervisor")  # a role that says no more than that the person sits on the body
+# A role that says no more than that the person sits on the body, or for which district: "Supervisor", "District II Supervisor".
+PLAIN_ROLE = re.compile(r"(district\s+\S+\s+)?(member|councilmember|council member|supervisor)(,?\s+district\s+\S+)?", re.I)
 
 # One letter for each way a member's vote is recorded; "-" where the record has none for them.
 VOTE_LETTERS = {"AYE": "A", "NO": "N", "ABSENT": "X", "NOT PRESENT": "X", "EXCUSED": "X", "RECUSED": "R", "ABSTAIN": "S", "ABSTAINED": "S",
@@ -62,11 +68,32 @@ def listed(values):
     return names, [place[value] for value in values]
 
 
-def members_of(table, surnames=None):
+def family(name):
+    """A person's family name, as far as the name shows it: the last word, a rank or a "Jr." after it set aside."""
+    name = re.sub(r"\s*\([^)]*\)\s*$", "", name)
+    name = re.sub(r",?\s+(Jr|Sr|II|III|IV)\.?$", "", name).strip(" ,")
+    return name.split(" ")[-1]
+
+
+def office(role, seated):
+    """What a member's role says beyond the seat itself: "Chair" of "Chair, District 3", nothing of "District II Supervisor"."""
+    role = role or ""
+    if PLAIN_ROLE.fullmatch(role):
+        return ""
+    if not seated or not re.search(r"\bdistrict\b", role, re.I):
+        return role
+    rest = re.sub(r"\b(supervisor|councilmember|council member|member),?", " ", role, flags=re.I)
+    rest = re.sub(r"\bdistrict\s+[0-9IVX]+\b", " ", rest, flags=re.I)
+    return re.sub(r"\s+", " ", rest).strip(" ,-–·")
+
+
+def members_of(table, surnames=None, today=None):
     """
     One entry a person. Someone who has held two seats is given the later one, and the whole of their time. A family name of
-    more than one word cannot be told from the name, so it is given: {"Marni von Wilpert": "von Wilpert"}.
+    more than one word cannot be told from the name, so it is given: {"Marni von Wilpert": "von Wilpert"}. Someone no longer
+    serving whose term the source still has running (to 2200, in one) left when they last voted.
     """
+    today = today or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     people, surnames = [], {slug(name): surname for name, surname in (surnames or {}).items()}
     for name, seats in table.groupby("name", sort=False):
         seats = seats.sort_values(["serving", "start"])
@@ -75,14 +102,17 @@ def members_of(table, surnames=None):
         ends = [end for end in seats["end"].fillna("") if end]
         firsts = [day for day in seats["first_vote"].fillna("") if day]
         lasts = [day for day in seats["last_vote"].fillna("") if day]
+        end = (last["end"] or "") if serving else (max(ends) if ends else "")
+        if not serving and end > today:
+            end = max(lasts) if lasts else ""
         people.append({
             "id": slug(name),
             "name": name,
-            "surname": surnames.get(slug(name)) or name.split(" ")[-1],
+            "surname": surnames.get(slug(name)) or family(name),
             "seat": None if pd.isna(last["district"]) else int(last["district"]),
-            "role": "" if last["role"] in PLAIN_ROLES or not serving and len(seats) > 1 else last["role"],
+            "role": "" if not serving and len(seats) > 1 else office(last["role"], not pd.isna(last["district"])),
             "start": min(seats["start"].fillna("")) or "",
-            "end": (last["end"] or "") if serving else (max(ends) if ends else ""),
+            "end": end,
             "serving": serving,
             "first_vote": min(firsts) if firsts else "",
             "last_vote": max(lasts) if lasts else "",
@@ -103,10 +133,33 @@ def votes_by_item(votes, members):
     return {item_id: "".join(letters) for item_id, letters in cast.items()}
 
 
-def build(tables, today=None, surnames=None):
+def plain(table):
+    """A table with "" wherever it has nothing. A column of whole numbers or of yes and no that has gaps cannot hold "" as it is."""
+    kept = [column for column in table.columns if str(table[column].dtype) in ("Int64", "Float64", "boolean")]
+    return table.astype({column: object for column in kept}).fillna("")
+
+
+def whole(value):
+    return int(value) if value != "" else 0
+
+
+def shortened(title, most):
+    """A title of no more than `most` letters, cut at a word and marked as cut."""
+    return title if not most or len(title) <= most else title[:most].rsplit(" ", 1)[0].rstrip(" ,;:(") + "…"
+
+
+def build(tables, today=None, surnames=None, start="", titles=0):
+    """The room's file. With `start`, the meetings from that day and the items filed since or on their agendas; with `titles`,
+    no title longer than that."""
     today = today or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    items, meetings, agenda, votes = (tables[name].fillna("") for name in TABLES[:4])
-    members = members_of(tables["members"], surnames)
+    items, meetings, agenda, votes = (plain(tables[name]) for name in TABLES[:4])
+    if start:
+        meetings = meetings[meetings["date"] >= start]
+        agenda = agenda[agenda["meeting_id"].isin(set(meetings["meeting_id"]))]
+        items = items[(items["date"] >= start) | items["matter_id"].isin(set(agenda["matter_id"]))]
+    if titles:
+        items = items.assign(title=[shortened(title, titles) for title in items["title"]])
+    members = members_of(tables["members"], surnames, today)
     person = {member["name"]: index for index, member in enumerate(members)}
 
     items = items.sort_values(["date", "matter_id"], ascending=[False, False]).reset_index(drop=True)
@@ -147,11 +200,11 @@ def build(tables, today=None, surnames=None):
             "acted": items["last_action_date"].tolist(),
             "action": action[:len(items)],
             "result": [RESULT_LETTERS.get(value, "") for value in items["result"]],
-            "ayes": [int(n) for n in items["ayes"]],
-            "noes": [int(n) for n in items["noes"]],
+            "ayes": [whole(n) for n in items["ayes"]],
+            "noes": [whole(n) for n in items["noes"]],
             "mover": [person.get(name, -1) for name in items["mover"]],
             "seconder": [person.get(name, -1) for name in items["seconder"]],
-            "times": [int(n) for n in items["times_on_agenda"]],
+            "times": [whole(n) for n in items["times_on_agenda"]],
             "has_text": [1 if text else 0 for text in items["text"]] if "text" in items.columns else [0] * len(items),
             "url": items["url"].tolist(),
         },
@@ -164,7 +217,7 @@ def build(tables, today=None, surnames=None):
             "url": meetings["url"].tolist(),
             "agenda_url": meetings["agenda_url"].tolist(),
             "minutes_url": meetings["minutes_url"].tolist(),
-            "items": [int(n) for n in meetings["items"]],
+            "items": [whole(n) for n in meetings["items"]],
         },
         "agenda": {
             "meeting": [int(n) for n in agenda["meeting"]],
@@ -172,8 +225,8 @@ def build(tables, today=None, surnames=None):
             "number": agenda["agenda_number"].tolist(),
             "action": action[len(items):],
             "result": [RESULT_LETTERS.get(value, "") for value in agenda["result"]],
-            "ayes": [int(n) for n in agenda["ayes"]],
-            "noes": [int(n) for n in agenda["noes"]],
+            "ayes": [whole(n) for n in agenda["ayes"]],
+            "noes": [whole(n) for n in agenda["noes"]],
             "votes": [cast.get(item_id, "") for item_id in agenda["item_id"]],
         },
     }
@@ -217,7 +270,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     body = BODIES[args.body]
     try:
-        snapshot = build(read_tables(body, args.tables), surnames=body["surnames"])
+        snapshot = build(read_tables(body, args.tables), surnames=body["surnames"], start=body.get("from", ""), titles=body.get("titles", 0))
     except Exception as e:
         log.error(f"Chamber file not built: {type(e).__name__}: {e}")
         return 1

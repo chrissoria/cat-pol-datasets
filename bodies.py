@@ -21,7 +21,9 @@ and, once it has a room in Capitol World:
 
     world         "chamber" for a board or council in one room; a world's own key otherwise
     chamber       where its tables are published and kept here, and what its table of
-                  members is called
+                  members is called; and, for a record too long to load as one file,
+                  the day its room starts (`from`) and the most letters a title is
+                  shown at (`titles`)
     short, room, member, seat, timezone, site, url, since
                   how the room words things: "the Council", "Council Chambers",
                   "Councilmember", "District", its time zone, what its own site is

@@ -82,14 +82,15 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   enactments through a browser to get past a bot check.
 - The same builder reads a county's board of supervisors where the county
   keeps its record in Legistar (`--city fresno-county`), into
-  `<county>-county-board`: Fresno, Sonoma, Mendocino, San Mateo, Lassen,
-  Santa Barbara, Humboldt and Placer so far.
+  `<county>-county-board`: San Bernardino, Contra Costa, Fresno, San Mateo,
+  Sonoma, Santa Barbara, Placer, El Dorado, Humboldt, Napa, Nevada, Mendocino,
+  Lake, Tehama and Lassen so far.
 - Counties on other systems have a reader for each system, all with the same
   options (`--county`, `--base`, `--no-upload`, `--write-card`) and the same
   five tables: `build_civicclerk_board.py` (Alpine, Colusa, Del Norte,
   Mariposa, Modoc, Plumas, Tuolumne), `build_primegov_board.py` (Tulare),
-  `build_iqm2_board.py` (San Joaquin, Santa Cruz, Sutter; Santa Clara being
-  read), `build_destiny_board.py` (Yolo) and `build_granicus_board.py` (Glenn,
+  `build_iqm2_board.py` (Santa Clara, San Joaquin, Santa Cruz, Sutter),
+  `build_destiny_board.py` (Yolo) and `build_granicus_board.py` (Glenn,
   Butte, Marin; not published).
 - Five counties publish how each supervisor voted only in PDF documents, and
   have a reader each that takes it from the documents' own text:
@@ -97,6 +98,11 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   `build_la_county_board.py`, `build_alameda_board.py` and
   `build_stanislaus_board.py` (the last two not published). A vote there is
   read whole or not at all; what could not be read is marked, not guessed.
+- A board has a room in Capitol World once its entry in `bodies.json` says so
+  (`world`, `chamber` and how the room words things) and
+  `build_chamber_snapshot.py --body <id>` has written its file. A long record
+  is given a first day and a length for titles there (`from`, `titles`), so
+  the room's file stays about a megabyte; the dataset has every year.
 - `council_tables.py` is the one shape all of these builders write: five tables
   (`items`, `meetings`, `agenda_items`, `votes`, `members`), each with the same
   columns first and a body's own after them, and one spelling of aye and no.

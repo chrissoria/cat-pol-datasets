@@ -82,3 +82,47 @@ def test_a_family_name_is_the_last_word_unless_one_is_given():
     members = chamber.build(tables(), today="2026-10-11", surnames={"ann lee": "Lee-Smith"})["members"]
     assert {member["name"]: member["surname"] for member in members}["Ann Lee"] == "Lee-Smith"
     assert all(member["surname"] == member["name"].split(" ")[-1] for member in members if member["name"] != "Ann Lee")
+
+
+def test_a_room_can_start_on_a_day_and_keep_its_titles_short():
+    held = tables()
+    held["items"].loc[1, "title"] = "A REPORT " + "on the roads of the county, " * 20
+    # An item filed before the room's first day stays if a meeting since had it on its agenda.
+    held["items"].loc[0, "date"] = "2026-06-01"
+    old = pd.DataFrame([{"matter_id": "9", "matter_file": "25-900", "title": "AN OLD ONE", "doc_type": "other", "status": "", "body": "BOARD", "subject": "",
+                         "date": "2025-01-07", "agenda_date": "2025-01-21", "last_action": "", "last_action_date": "", "result": "", "ayes": 0, "noes": 0,
+                         "mover": "", "seconder": "", "times_on_agenda": 1, "text": "", "url": "u9"}])
+    held["items"] = pd.concat([held["items"], old], ignore_index=True)
+    held["meetings"] = pd.concat([held["meetings"], pd.DataFrame([{"meeting_id": "0", "date": "2025-01-21", "time": "", "body": "BOARD", "location": "",
+                                                                    "url": "m0", "agenda_url": "", "minutes_url": "", "items": 1}])], ignore_index=True)
+    held["agenda_items"] = pd.concat([held["agenda_items"], pd.DataFrame([{"item_id": "99", "meeting_id": "0", "date": "2025-01-21", "sequence": 1,
+                                                                            "agenda_number": "1", "matter_id": "9", "action": "", "result": "", "ayes": 0, "noes": 0}])], ignore_index=True)
+    whole = chamber.build(held, today="2026-10-11")
+    assert len(whole["items"]["id"]) == 3 and len(whole["meetings"]["id"]) == 3 and len(whole["items"]["title"][0]) > 300
+    room = chamber.build(held, today="2026-10-11", start="2026-01-01", titles=60)
+    assert room["items"]["id"] == ["11", "10"] and room["meetings"]["id"] == ["2", "1"] and len(room["agenda"]["item"]) == 2
+    assert room["items"]["title"] == ["A REPORT on the roads of the county, on the roads of the…", "AN ORDINANCE"]
+
+
+def test_a_table_with_gaps_in_its_numbers_is_read_as_having_none_there():
+    held = tables()
+    held["items"]["ayes"] = pd.array([2, None], dtype="Int64")
+    held["agenda_items"]["noes"] = pd.array([1, None], dtype="Int64")
+    held["meetings"]["items"] = pd.array([None, 1], dtype="Int64")
+    held["agenda_items"]["heading"] = pd.array([False, None], dtype="boolean")
+    made = chamber.build(held, today="2026-10-11")
+    assert made["items"]["ayes"] == [0, 2] and made["agenda"]["noes"] == [0, 1] and made["meetings"]["items"] == [1, 0]
+
+
+def test_a_role_does_not_repeat_the_seat_and_a_family_name_is_not_a_rank_or_a_junior():
+    assert [chamber.office(role, True) for role in ("Supervisor, District 2 Board Chair", "District 2 - Chair", "Vice Chair, District 4", "District II Supervisor",
+                                                    "Council President Pro Tem")] == ["Board Chair", "Chair", "Vice Chair", "", "Council President Pro Tem"]
+    assert chamber.office("District 1", False) == "District 1"  # all that says which seat, where the seat itself is not known
+    assert [chamber.family(name) for name in ("Col. Paul Cook (Ret.)", "Joe Baca, Jr.", "Henry L. Foster III", "Ann Lee")] == ["Cook", "Baca", "Foster", "Lee"]
+
+
+def test_someone_gone_whose_term_the_source_left_running_left_when_they_last_voted():
+    held = tables()
+    held["members"].loc[0, "end"] = "2200-12-05"
+    gone = chamber.build(held, today="2026-10-11")["members"][2]
+    assert (gone["id"], gone["serving"], gone["end"]) == ("cy-old", False, "2026-09-16")
