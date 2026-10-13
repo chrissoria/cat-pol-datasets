@@ -14,9 +14,17 @@ is what is listed here, so the tables of two bodies can be set one on the other.
   votes          one row per member and item acted on
   members        one row per member's time on the body
 
-build_sd_county.py, build_sd_council.py and build_legistar_council.py each
-pass their tables through standard() before writing them.
+build_sd_county.py, build_sd_council.py, build_legistar_council.py and the
+county readers written for other systems (build_civicclerk_board.py,
+build_primegov_board.py, build_iqm2_board.py, build_destiny_board.py,
+build_granicus_board.py) or for one county's own documents
+(build_sacramento_board.py, build_orange_board.py, build_la_county_board.py,
+build_alameda_board.py, build_stanislaus_board.py) each pass their tables
+through standard() before writing them. All but the first two also keep and
+publish their tables through the functions at the foot of this file.
 """
+
+from pathlib import Path
 
 TABLES = ("items", "meetings", "agenda_items", "votes", "members")
 
@@ -57,3 +65,55 @@ def standard(tables):
             raise ValueError(f"the {name} table has no {', '.join(missing)}")
         out[name] = table[COLUMNS[name] + [column for column in table.columns if column not in COLUMNS[name]]]
     return out
+
+
+# ---------------------------------------------------------------------------
+# Keeping and publishing the tables
+# ---------------------------------------------------------------------------
+
+def published(repo, name):
+    """A table of a dataset as last published, or None."""
+    import pandas as pd
+    import build_federal_bills as bills
+    try:
+        from huggingface_hub import hf_hub_download
+        return pd.read_parquet(hf_hub_download(repo, f"data/{name}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
+    except Exception:
+        return None
+
+
+def held(repo, out_dir, name, base):
+    """The table a run starts from: what is published, or failing that what was last written here.
+
+    A whole run looks here first: it is run by hand and stopped and started, so what it has written is further on than
+    what is published. The routine run looks at what is published first: it may be run where nothing was written before.
+    """
+    import pandas as pd
+    path = Path(out_dir) / f"{name}.parquet"
+    local = lambda: pd.read_parquet(path) if path.exists() else None
+    first, second = (local, lambda: published(repo, name)) if base else (lambda: published(repo, name), local)
+    found = first()
+    return found if found is not None else second()
+
+
+def write_tables(tables, out_dir):
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, table in tables.items():
+        table.to_parquet(out_dir / f"{name}.parquet", index=False)
+
+
+def publish(repo, out_dir, card, with_card, message):
+    """Publish the five tables written in `out_dir`, and the card if asked for or if the dataset has none. False if not allowed."""
+    import build_federal_bills as bills
+    from huggingface_hub import CommitOperationAdd, HfApi
+    hub = HfApi(token=bills.HF_TOKEN)
+    hub.create_repo(repo, repo_type="dataset", exist_ok=True)
+    problem = bills.hf_write_problem(repo)
+    if problem:
+        raise PermissionError(problem)
+    operations = [CommitOperationAdd(path_in_repo=f"data/{name}.parquet", path_or_fileobj=str(Path(out_dir) / f"{name}.parquet"))
+                  for name in TABLES]
+    if card and (with_card or "README.md" not in set(hub.list_repo_files(repo, repo_type="dataset"))):
+        operations.append(CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=card.encode("utf-8")))
+    hub.create_commit(repo_id=repo, repo_type="dataset", operations=operations, commit_message=message)

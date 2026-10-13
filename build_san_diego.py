@@ -371,8 +371,12 @@ def waiting(dataset, kept, retry=False):
 
 
 def published():
-    from huggingface_hub import hf_hub_download
-    return pd.read_parquet(hf_hub_download(HF_REPO, DATA_FILE, repo_type="dataset", token=bills.HF_TOKEN))
+    """The table as published. It is one file unless a publishing split it in parts, which are then read as one."""
+    from huggingface_hub import HfApi, hf_hub_download
+    listed = HfApi(token=bills.HF_TOKEN).list_repo_files(HF_REPO, repo_type="dataset")
+    parts = sorted(name for name in listed if re.fullmatch(r"data/train-\d+-of-\d+\.parquet", name)) or [DATA_FILE]
+    return pd.concat([pd.read_parquet(hf_hub_download(HF_REPO, part, repo_type="dataset", token=bills.HF_TOKEN)) for part in parts],
+                     ignore_index=True)
 
 
 def add_listed(dataset, index):
@@ -440,7 +444,9 @@ def publish():
     if len(dataset) < len(before) or has < had or dataset["doc_num"].duplicated().any():
         raise RuntimeError(f"{len(dataset)} rows and {has} texts where there were {len(before)} and {had}; not publishing")
     from datasets import Dataset
-    Dataset.from_pandas(dataset, preserve_index=False).push_to_hub(HF_REPO, token=bills.HF_TOKEN, private=False)
+    # One file whatever its size: the table is read by that file's name, here and by whoever uses the dataset.
+    Dataset.from_pandas(dataset, preserve_index=False).push_to_hub(HF_REPO, token=bills.HF_TOKEN, private=False,
+                                                                   max_shard_size="8GB")
     dataset.to_parquet(CACHE, index=False)
     log.info(f"Published {len(dataset)} rows, {has} with text ({len(dataset) - len(before)} new rows, {has - had} new texts, "
              f"{left_out} left out for a number already taken)")

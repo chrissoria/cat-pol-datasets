@@ -75,7 +75,9 @@ CITIES = {
     "fresno": {"client": "fresno", "name": "Fresno", "council": ["City Council"]},
     "salinas": {"client": "salinas", "name": "Salinas", "council": ["City Council"]},
     # A county's board of supervisors is read the same way. `owner` says whose record it is, where it is not a city's.
-    "riverside-county": {"client": "riversidecountyca", "name": "Riverside", "owner": "County", "council": ["Board of Supervisors"]},
+    # `from` is the day a county's real record begins here: one that has just taken up the system leaves in it the
+    # practice meetings it was set up with, which have made-up items and made-up votes under the supervisors' names.
+    # Riverside's (riversidecountyca) is nothing but such practice so far, and is not here.
     "san-bernardino-county": {"client": "sanbernardino", "name": "San Bernardino", "owner": "County", "council": [
         "Board of Supervisors Regular Meeting", "Board of Supervisors Special Meeting",
         "Board of Supervisors Special Meeting - Study Session", "Board of Supervisors Emergency Meeting",
@@ -87,10 +89,13 @@ CITIES = {
     "san-mateo-county": {"client": "sanmateocounty", "name": "San Mateo", "owner": "County", "council": ["BOARD OF SUPERVISORS"]},
     "sonoma-county": {"client": "sonoma-county", "name": "Sonoma", "owner": "County", "council": ["Board of Supervisors"]},
     "santa-barbara-county": {"client": "santabarbara", "name": "Santa Barbara", "owner": "County", "council": ["BOARD OF SUPERVISORS"]},
-    "placer-county": {"client": "placerca", "name": "Placer", "owner": "County", "council": ["Board of Supervisors"]},
+    "placer-county": {"client": "placerca", "name": "Placer", "owner": "County", "council": ["Board of Supervisors"], "from": "2026-07-01"},
     "el-dorado-county": {"client": "eldorado", "name": "El Dorado", "owner": "County", "council": ["Board of Supervisors"]},
     "humboldt-county": {"client": "humboldt", "name": "Humboldt", "owner": "County", "council": ["Board of Supervisors"]},
     "mendocino-county": {"client": "mendocino", "name": "Mendocino", "owner": "County", "council": ["Board of Supervisors"]},
+    "lake-county": {"client": "countyoflake", "name": "Lake", "owner": "County", "council": ["BOARD OF SUPERVISORS"]},
+    "napa-county": {"client": "napa", "name": "Napa", "owner": "County", "council": ["Board of Supervisors"]},
+    "nevada-county": {"client": "nevco", "name": "Nevada", "owner": "County", "council": ["BOARD OF SUPERVISORS"]},
     "tehama-county": {"client": "tehamacounty", "name": "Tehama", "owner": "County", "council": ["Board of Supervisors"]},
     "lassen-county": {"client": "lassen", "name": "Lassen", "owner": "County",
                       "council": ["Board of Supervisors", "Board of Supervisors Special Meeting"]},
@@ -138,8 +143,8 @@ DISTRICTS = {
         "Val Lerch": 9, "Steven Neal": 9, "Councilmember Richardson": 9, "Vice Mayor Richardson": 9, "Councilmember Ricks-Oddie": 9,
     },
 }
-GAP_DAYS = 31
-SEEN_DAYS = 5  # someone with no term on record is a member if they vote at the body's meetings on this many days: once is a clerk's slip  # terms this close together are one time on the council: a member re-elected is sworn in a few days on
+GAP_DAYS = 31  # terms this close together are one time on the council: a member re-elected is sworn in a few days on
+SEEN_DAYS = 5  # someone with no term on record is a member if they vote at the body's meetings on this many days: once is a clerk's slip
 
 ITEM_COLUMNS = ["date", "matter_id", "matter_file", "doc_type", "title", "body", "status", "year", "subject", "agenda_date",
                 "passed_date", "last_action", "last_action_date", "result", "ayes", "noes", "mover", "seconder",
@@ -264,30 +269,15 @@ def repo_of(key):
 
 def published(key, name):
     """A table as last published, or None."""
-    try:
-        from huggingface_hub import hf_hub_download
-        return pd.read_parquet(hf_hub_download(repo_of(key), f"data/{name}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
-    except Exception:
-        return None
+    return council_tables.published(repo_of(key), name)
 
 
 def held(key, out_dir, name, base):
-    """The table a run starts from: what is published, or failing that what was last written here.
-
-    A whole run looks here first: it is run by hand and stopped and started, so what it has written is further on than
-    what is published. The routine run looks at what is published first: it may be run where nothing was written before.
-    """
-    path = Path(out_dir) / f"{name}.parquet"
-    local = lambda: pd.read_parquet(path) if path.exists() else None
-    first, second = (local, lambda: published(key, name)) if base else (lambda: published(key, name), local)
-    found = first()
-    return found if found is not None else second()
+    """The table a run starts from: what is published on a routine run, what was last written here on a whole one."""
+    return council_tables.held(repo_of(key), out_dir, name, base)
 
 
-def write_tables(tables, out_dir):
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for name, table in tables.items():
-        table.to_parquet(out_dir / f"{name}.parquet", index=False)
+write_tables = council_tables.write_tables
 
 
 def build(key, base, since, out_dir, every=200):
@@ -295,12 +285,17 @@ def build(key, base, since, out_dir, every=200):
     point_at(city)
     events = county.paged("events", orderby="EventId")
     matters = county.paged("matters", orderby="MatterId")
+    start = city.get("from", "")
+    events = [event for event in events if day_of(event["EventDate"]) >= start]
+    matters = [matter for matter in matters if day_of(matter.get("MatterIntroDate")) >= start]
     log.info(f"{city['name']}: {len(matters)} items and {len(events)} meetings listed")
     if len(matters) < 100:
         raise RuntimeError("the listing of items came back nearly empty")
     meetings = county.meetings_table(events)
 
     agenda, votes, items = (held(key, out_dir, name, base) for name in ("agenda_items", "votes", "items"))
+    if agenda is not None and start:
+        agenda, votes = agenda[agenda["date"] >= start], votes[votes["date"] >= start]
     before = 0 if votes is None else len(votes)
     known = set(agenda["meeting_id"]) if agenda is not None else set()
     recent = (datetime.now(timezone.utc) - timedelta(days=county.RECENT_DAYS)).strftime("%Y-%m-%d")
@@ -359,7 +354,12 @@ def card(key, tables):
                 "City's own pages, for earlier\n  members from Wikipedia and what is commonly recorded. It is empty for a\n  member "
                 "elected by the whole city, such as a mayor or an at-large member, and\n  where the record does not make clear who a name is."
                 if key in DISTRICTS else
-                "- The source does not say which district a member sits for, so `district` is\n  empty.")
+                "- The source does not say which district a member sits for, so `district` is\n  empty unless the member's "
+                "title gives it.")
+    if city.get("from"):
+        district += (f"\n- The {'County' if county else 'City'} took up this system not long before {city['from']}, and what "
+                     "it holds from\n  before that day is practice: made-up items and made-up votes entered while\n  the system "
+                     "was being set up. Meetings and items from before that day are\n  left out.")
     facts = {
         "title": f"{city['name']} County Board of Supervisors" if county else f"{city['name']} City Council",
         "owner": "County" if county else "City", "board": "Board" if county else "Council", "place": city["name"],
@@ -378,19 +378,12 @@ def card(key, tables):
 
 
 def upload(key, tables, out_dir, with_card):
-    from huggingface_hub import CommitOperationAdd, HfApi
-    repo, hub = repo_of(key), HfApi(token=bills.HF_TOKEN)
-    hub.create_repo(repo, repo_type="dataset", exist_ok=True)
-    problem = bills.hf_write_problem(repo)
-    if problem:
-        log.error(f"{key} tables not uploaded: {problem}")
+    try:
+        council_tables.publish(repo_of(key), out_dir, card(key, tables) if CARD_FILE.exists() else "", with_card,
+                               f"Update the tables ({county.today()})")
+    except PermissionError as e:
+        log.error(f"{key} tables not uploaded: {e}")
         return False
-    operations = [CommitOperationAdd(path_in_repo=f"data/{name}.parquet", path_or_fileobj=str(out_dir / f"{name}.parquet"))
-                  for name in TABLES]
-    if (with_card or "README.md" not in set(hub.list_repo_files(repo, repo_type="dataset"))) and CARD_FILE.exists():
-        operations.append(CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=card(key, tables).encode("utf-8")))
-    hub.create_commit(repo_id=repo, repo_type="dataset", operations=operations,
-                      commit_message=f"Update the tables ({county.today()})")
     return True
 
 
