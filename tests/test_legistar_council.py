@@ -105,6 +105,30 @@ def test_a_district_is_typed_in_by_name_and_a_mayor_has_none():
     assert all(isinstance(d, int) and 1 <= d <= 9 for names in city.DISTRICTS.values() for d in names.values()) and "Vice Mayor Lowenthal" not in every
 
 
+def test_a_term_left_open_ends_with_the_votes_and_the_systems_own_account_is_no_member():
+    # As a county's record has them: two terms the clerk never closed, one of them by someone long gone, the vendor's
+    # account among the office holders, a district in Roman numerals, and a mayor who votes only to break a tie.
+    records = [record("Dawn Rowe", "2018-01-01", None, title="Supervisor"), record("Josie Gonzales", "2018-01-01", "2200-12-05", title="Member"),
+               record("Granicus BA", "2015-09-01", None, title="Chairman"), record("John Gioia", "2020-11-04", "2099-12-31", title="District I Supervisor"),
+               record("A Mayor", "2018-01-01", None, title="Mayor")]
+    votes = votes_of(*[vote(str(n), "Josie Gonzales", "AYE", date="2020-11-17") for n in range(25)],
+                     *[vote(str(n), "Dawn Rowe", "AYE", date="2020-11-17") for n in range(25)],
+                     *[vote(str(n), "Dawn Rowe", "AYE", date="2026-10-06") for n in range(25, 30)], vote("1", "A Mayor", "AYE", date="2019-03-05"))
+    table = city.members_table(records, votes, pd.DataFrame({"meeting_id": ["9"], "body": ["City Council"]}), {"City Council"}).set_index("name")
+    assert sorted(table.index) == ["A Mayor", "Dawn Rowe", "John Gioia", "Josie Gonzales"]
+    assert table["serving"].to_dict() == {"A Mayor": True, "Dawn Rowe": True, "John Gioia": True, "Josie Gonzales": False}
+    assert table.loc["John Gioia", "district"] == 1
+
+
+def test_a_name_is_read_without_the_district_or_the_mark_a_clerk_hangs_on_it():
+    assert city.plain_name("Heidi Hall, District I") == ("Heidi Hall", 1) and city.plain_name("Nate Beason, District 1") == ("Nate Beason", 1)
+    assert city.plain_name("z.Dan Miller, District III") == ("Dan Miller", 3) and city.plain_name("z.Richard z.Anderson") == ("Richard Anderson", None)
+    assert city.plain_name("John Z. Smith") == ("John Z. Smith", None) and city.plain_name(None) == ("", None)
+    table = city.members_table([record("Heidi Hall, District I", "2016-12-29", "2099-12-31", title="Supervisor")], votes_of(),
+                               pd.DataFrame({"meeting_id": [], "body": []}), {"City Council"})
+    assert table[["name", "district"]].values.tolist() == [["Heidi Hall", 1]]
+
+
 def test_terms_that_overlap_or_follow_within_a_month_are_one_time_on_the_council():
     regular, special = "Regular Meeting of the Council", "Special Meeting of the Council"
     records = [

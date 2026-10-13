@@ -20,6 +20,7 @@ def tables(**extra):
 def test_a_vote_is_aye_or_no_however_a_body_spells_them_and_otherwise_its_own_word_in_capitals():
     assert [shape.vote_word(word) for word in ("Aye", "Ayes", "Yes", "yea")] == ["AYE"] * 4
     assert [shape.vote_word(word) for word in ("No", "Noes", "NOE", "Nay")] == ["NO"] * 4
+    assert [shape.vote_word(word) for word in ("Voting Yes", "Voting No")] == ["AYE", "NO"]  # as Napa County's clerk has them
     assert shape.vote_word(" Not  Present ") == "NOT PRESENT" and shape.vote_word("Excused") == "EXCUSED" and shape.vote_word(None) == ""
 
 

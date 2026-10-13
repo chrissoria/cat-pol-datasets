@@ -41,7 +41,7 @@ COLUMNS = {
 
 # A vote is one of these words. Aye and no are spelled one way; any other word is the body's own, in capitals.
 AYE, NO = "AYE", "NO"
-VOTE_WORDS = {"AYES": AYE, "YES": AYE, "YEA": AYE, "YEAS": AYE, "NOES": NO, "NOE": NO, "NAY": NO, "NAYS": NO}
+VOTE_WORDS = {"AYES": AYE, "YES": AYE, "YEA": AYE, "YEAS": AYE, "VOTING YES": AYE, "NOES": NO, "NOE": NO, "NAY": NO, "NAYS": NO, "VOTING NO": NO}
 
 
 def vote_word(word):

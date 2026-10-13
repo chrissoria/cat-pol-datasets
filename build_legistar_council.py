@@ -93,9 +93,15 @@ CITIES = {
     "el-dorado-county": {"client": "eldorado", "name": "El Dorado", "owner": "County", "council": ["Board of Supervisors"]},
     "humboldt-county": {"client": "humboldt", "name": "Humboldt", "owner": "County", "council": ["Board of Supervisors"]},
     "mendocino-county": {"client": "mendocino", "name": "Mendocino", "owner": "County", "council": ["Board of Supervisors"]},
-    "lake-county": {"client": "countyoflake", "name": "Lake", "owner": "County", "council": ["BOARD OF SUPERVISORS"]},
-    "napa-county": {"client": "napa", "name": "Napa", "owner": "County", "council": ["Board of Supervisors"]},
-    "nevada-county": {"client": "nevco", "name": "Nevada", "owner": "County", "council": ["BOARD OF SUPERVISORS"]},
+    "lake-county": {"client": "countyoflake", "name": "Lake", "owner": "County", "council": ["BOARD OF SUPERVISORS"],
+                    "note": "Votes by member are entered for May 2014 to 2021. Since 2022 the clerk has\n  rarely entered an action "
+                            "or a vote: what the Board did in those years is in\n  its minutes, not here."},
+    "napa-county": {"client": "napa", "name": "Napa", "owner": "County", "council": ["Board of Supervisors"],
+                    "note": "The clerk enters an action and a vote for about one agenda line in ten, in 2021\n  to 2024 and again from "
+                            "March 2026, and for almost none in 2025. What the\n  Board did with the rest is in its minutes, not here."},
+    "nevada-county": {"client": "nevco", "name": "Nevada", "owner": "County", "council": ["BOARD OF SUPERVISORS"],
+                      "note": "The clerk enters what was done, and the votes, some months after a meeting:\n  the latest meetings "
+                              "have their agendas and no actions yet."},
     "tehama-county": {"client": "tehamacounty", "name": "Tehama", "owner": "County", "council": ["Board of Supervisors"]},
     "lassen-county": {"client": "lassen", "name": "Lassen", "owner": "County",
                       "council": ["Board of Supervisors", "Board of Supervisors Special Meeting"]},
@@ -144,6 +150,11 @@ DISTRICTS = {
     },
 }
 GAP_DAYS = 31  # terms this close together are one time on the council: a member re-elected is sworn in a few days on
+GONE_DAYS = 365  # a term the source leaves open is over once its holder, who voted here, has not for this long while the body has
+GONE_VOTES = 20  # ...unless they seldom vote at all, as a mayor who only breaks ties does
+VENDOR = re.compile(r"^(granicus|legistar)\b", re.I)  # the system's own accounts, left among the office holders
+NAME_SEAT = re.compile(r",\s*District\s+(\d+|[IVX]+)\s*$", re.I)  # "Heidi Hall, District I": a clerk's note after a name
+ROMAN = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7, "VIII": 8, "IX": 9}
 SEEN_DAYS = 5  # someone with no term on record is a member if they vote at the body's meetings on this many days: once is a clerk's slip
 
 ITEM_COLUMNS = ["date", "matter_id", "matter_file", "doc_type", "title", "body", "status", "year", "subject", "agenda_date",
@@ -226,6 +237,21 @@ def terms_of(seats):
     return rows
 
 
+def seat_number(said):
+    return None if not said else int(said) if said.isdigit() else ROMAN.get(said.upper())
+
+
+def plain_name(name):
+    """A person's name without what a clerk hangs on it, and the district if that was one of the things.
+
+    Some put the district after the name ("Heidi Hall, District I"), and a "z." before the name of someone who has left,
+    which sorts them to the foot of the clerk's lists ("z.Dan Miller").
+    """
+    name = clean(name)
+    said = NAME_SEAT.search(name)
+    return clean(re.sub(r"(^|\s)z\.(?=\S)", r"\1", NAME_SEAT.sub("", name))), seat_number(said[1]) if said else None
+
+
 def members_table(records, votes, meetings, bodies, districts=None):
     """Each time someone sat on the council, as the source's terms show it, with the district typed in for them.
 
@@ -234,19 +260,26 @@ def members_table(records, votes, meetings, bodies, districts=None):
     """
     districts = districts or {}
     rows = terms_of([{
-        "name": clean(seat["OfficeRecordFullName"]),
-        "district": None,
+        "name": plain_name(seat["OfficeRecordFullName"])[0],
+        "district": plain_name(seat["OfficeRecordFullName"])[1],  # where the clerk put it after the name
         "role": clean(seat.get("OfficeRecordTitle")) or clean(seat.get("OfficeRecordMemberType")),
         "start": day_of(seat.get("OfficeRecordStartDate")),
         "end": day_of(seat.get("OfficeRecordEndDate")),
-    } for seat in records if clean(seat.get("OfficeRecordBodyName")) in bodies and seat.get("OfficeRecordStartDate")])
+    } for seat in records if clean(seat.get("OfficeRecordBodyName")) in bodies and seat.get("OfficeRecordStartDate")
+        and not VENDOR.match(clean(seat["OfficeRecordFullName"]))])
+    sat = set(meetings.loc[meetings["body"].isin(bodies), "meeting_id"])
+    here = votes[votes["meeting_id"].isin(sat)]
+    last, count = here.groupby("member")["date"].max(), here.groupby("member").size()
+    gone = (pd.Timestamp(here["date"].max()) - pd.Timedelta(days=GONE_DAYS)).strftime("%Y-%m-%d") if len(here) else ""
     for row in rows:
         row["serving"] = row["start"] <= county.today() <= (row["end"] or "9999")
-        said = re.search(r"\bDistrict (\d+)\b", row["role"])  # a few bodies give it in the office's title
-        row["district"] = None if row["role"] == "Mayor" else districts.get(row["name"], int(said[1]) if said else None)
-    sat = set(meetings.loc[meetings["body"].isin(bodies), "meeting_id"])
+        if row["serving"] and count.get(row["name"], 0) >= GONE_VOTES and last[row["name"]] < gone:
+            row["serving"] = False  # the source never closed the term
+        said = re.search(r"\bDistrict (\d+|[IVX]+)\b", row["role"])  # a few bodies give it in the office's title
+        seat = seat_number(said[1]) if said else row["district"]
+        row["district"] = None if row["role"] == "Mayor" else districts.get(row["name"], seat)
     known = {row["name"] for row in rows}
-    days = votes[votes["meeting_id"].isin(sat)].groupby("member")["date"].nunique()
+    days = here.groupby("member")["date"].nunique()
     rows += [{"name": name, "district": districts.get(name), "role": "", "start": "", "end": "", "serving": False}
              for name in sorted(days[days >= SEEN_DAYS].index) if name and name not in known]
     out = pd.DataFrame(rows, columns=council_tables.COLUMNS["members"][:6])
@@ -330,8 +363,14 @@ def build(key, base, since, out_dir, every=200):
         write_tables(tables, out_dir)
         read += len(done)
         log.info(f"{city['name']}: {min(start + every, len(wanted))} of {len(wanted)} meetings asked for, {len(votes)} votes held")
+    seats = {}  # the district a clerk put after a name, for someone who votes and has no term on record
+    for table, columns in ((votes, ("member",)), (agenda, ("mover", "seconder")), (items, ("mover", "seconder"))):
+        for column in columns:
+            names = {name: plain_name(name) for name in table[column].dropna().unique()}
+            seats.update({plain: seat for plain, seat in names.values() if seat})
+            table[column] = table[column].map(lambda name: names[name][0] if name in names else name)
     tables["members"] = members_table(county.paged("officerecords", orderby="OfficeRecordId"), votes, meetings,
-                                      {clean(body) for body in city["council"]}, DISTRICTS.get(key))
+                                      {clean(body) for body in city["council"]}, {**seats, **DISTRICTS.get(key, {})})
     tables = council_tables.standard(tables)
     write_tables(tables, out_dir)
     if len(votes) < before * 0.98:
@@ -360,6 +399,8 @@ def card(key, tables):
         district += (f"\n- The {'County' if county else 'City'} took up this system not long before {city['from']}, and what "
                      "it holds from\n  before that day is practice: made-up items and made-up votes entered while\n  the system "
                      "was being set up. Meetings and items from before that day are\n  left out.")
+    if city.get("note"):
+        district += "\n- " + city["note"]
     facts = {
         "title": f"{city['name']} County Board of Supervisors" if county else f"{city['name']} City Council",
         "owner": "County" if county else "City", "board": "Board" if county else "Council", "place": city["name"],

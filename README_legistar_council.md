@@ -132,6 +132,13 @@ and has no term on record has a row too, with no dates.
 {district_note}
 - A member's `start` and `end` are as good as the terms the system has on
   record; `first_vote` and `last_vote` show when they are actually seen.
+- A member whose term the system leaves open is `serving` only while they
+  are still seen voting: one who voted here and has not for a year, while
+  the body has, is taken to have left. The system's own accounts, which some
+  clerks leave among the office holders, are not members.
+- A name is as the clerk typed it, less two things some clerks hang on it:
+  a district after it ("Heidi Hall, District I"), which goes to `district`,
+  and a "z." before the name of someone who has left.
 - A vote the clerk entered twice is here once.
 - A vote is here only if the clerk entered it by member. An item passed
   without a recorded roll call has an `action` and no rows in `votes`.

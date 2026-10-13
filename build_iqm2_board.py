@@ -116,6 +116,9 @@ class Refused(Exception):
     """The host answered with a bot check, a login or a refusal. It is not asked again in this run."""
 
 
+WITHHELD = "The meeting is not available at this time"  # what a meeting's page says where the county has taken its outline down
+
+
 class NoPage(Exception):
     """The portal has no such page, cannot make it, or says it is not published for viewing yet."""
 
@@ -418,7 +421,10 @@ def read_meeting(key, meeting):
     """
     meeting_id, date, body = str(meeting["meeting_id"]), meeting["date"], meeting["body"]
     site, agenda, votes, used, section = site_of(key), [], [], set(), None
-    for sequence, line in enumerate(lines_of(fetch(meeting_page(key, meeting_id))), 1):
+    page = fetch(meeting_page(key, meeting_id))
+    if WITHHELD in page:
+        raise NoPage("the portal says the meeting is not available at this time")  # it stays unread, and is asked for again
+    for sequence, line in enumerate(lines_of(page), 1):
         kind, found = line["kind"], {}
         if kind == "item":
             try:

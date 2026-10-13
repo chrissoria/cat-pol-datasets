@@ -145,6 +145,10 @@ within {serving_days} days. The Board sits in this portal as {board_names}.
 
 ## What to know
 
+- The portal shows some meetings as "not available at this time". Such a
+  meeting is in `meetings` with no agenda lines and no votes, and is asked
+  for again on a later run. Santa Clara County's regular meetings of January
+  to May 2024 are of this kind.
 - A consent calendar is voted on as one, and that vote is on the calendar's
   own line (`kind` is `motion`). Some clerks enter it again on each item under
   it and some do not: where an item's `action` says "By Consent Vote" and it
