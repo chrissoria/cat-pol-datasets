@@ -142,6 +142,7 @@ CENSUS_FILES = {
     f"acs{ACS_YEAR}_home_value.dat": f"{ACS}/acsdt5y{ACS_YEAR}-b25077.dat",
     f"acs{ACS_YEAR}_population.dat": f"{ACS}/acsdt5y{ACS_YEAR}-b01003.dat",
     f"acs{ACS_YEAR}_ages.dat": f"{ACS}/acsdt5y{ACS_YEAR}-b01001.dat",  # people by sex and age band; 200 megabytes
+    f"acs{ACS_YEAR}_race.dat": f"{ACS}/acsdt5y{ACS_YEAR}-b03002.dat",  # people by Hispanic or Latino origin and race; 80 megabytes
     # Which county, or counties, each place is in. The estimates say so for cities only.
     "place_counties.txt": "https://www2.census.gov/geo/docs/reference/codes2020/national_place_by_county2020.txt",
     # Bureau of Economic Analysis: gross domestic product by state and by county.
@@ -182,10 +183,16 @@ AGE_BANDS = [("age_under_1", 0, 0), ("age_1_4", 1, 4), ("age_5_12", 5, 12), ("ag
 # band, and the numbers of the survey's columns for men (the women's are 24 further on). Table B01001.
 SURVEY_BANDS = {"age_under_18": (3, 6), "age_18_24": (7, 10), "age_25_34": (11, 12), "age_35_44": (13, 14), "age_45_54": (15, 16),
                 "age_55_64": (17, 19), "age_65_74": (20, 22), "age_75_79": (23, 23), "age_80_plus": (24, 25)}
+# The survey's table of Hispanic or Latino origin by race (B03002), as five groups that no one is in twice and everyone is
+# in once: who is Hispanic or Latino, of any race, and everyone else by the one race they gave. The numbers are the
+# table's own lines. "Other" is American Indian or Alaska Native, Native Hawaiian or Pacific Islander, some other race,
+# and two or more races.
+RACE_SHARES = {"white_share": (3,), "black_share": (4,), "asian_share": (6,), "hispanic_share": (12,), "other_race_share": (5, 7, 8, 9)}
 MEMBERS_REPO = "chrissoria/congress-members"  # who sits in Congress now, for the districts and states they sit for
 PARTY_NAMES = {"Democrat": "Democrat", "Democratic": "Democrat", "Republican": "Republican", "Independent": "Independent"}
 FEATURE_COLUMNS = ["density_per_sq_mi", "water_share", "urban_population_share", "rural_urban_code", "rural_urban_label",
-                   *[band for band, _, _ in AGE_BANDS], "age_under_18", "age_year", "median_household_income", "gini_index", "median_home_value", "income_years",
+                   *[band for band, _, _ in AGE_BANDS], "age_under_18", "age_year", *RACE_SHARES, "race_years",
+                   "median_household_income", "gini_index", "median_home_value", "income_years",
                    "gdp_per_capita", "gdp_year", "violent_crime_rate", "property_crime_rate", "homicide_rate", "crime_year", *VOTE_COLUMNS]
 WIKIDATA = "https://query.wikidata.org/sparql"
 WORLD = "https://christophersoria.com/capitol-world/"
@@ -558,6 +565,27 @@ def survey_ages(path):
     return shares
 
 
+def survey_race(path):
+    """The share of each place's people in each of RACE_SHARES, from the survey's table of Hispanic or Latino origin by race."""
+    shares = {}
+    with open(path, encoding="latin-1") as f:
+        at = {name: index for index, name in enumerate(next(f).rstrip("\n").split("|"))}
+        column = lambda n: at[f"B03002_E{n:03d}"]
+        groups = {group: [column(n) for n in lines] for group, lines in RACE_SHARES.items()}
+        total = column(1)
+        for line in f:
+            key = survey_key(line[:line.index("|")])
+            if key is None:
+                continue
+            cells = line.rstrip("\n").split("|")
+            people = number(cells[total])
+            if not people or people < 0:
+                continue
+            shares[key] = {group: round(sum(max(number(cells[index]) or 0, 0) for index in columns) / people, 4)
+                           for group, columns in groups.items()}
+    return shares
+
+
 def gdp_values(path, pattern, scale):
     """Current-dollar gross domestic product, in dollars, by place and year: {code: {year: dollars}}."""
     with zipfile.ZipFile(path) as archive:
@@ -619,6 +647,11 @@ def add_features(places, folder):
     for band in SURVEY_BANDS:
         places.loc[unaged, band] = places.loc[unaged, "place_id"].map(lambda code: surveyed_ages.get(code, {}).get(band))
     places.loc[unaged & places["place_id"].isin(surveyed_ages), "age_year"] = ACS_YEAR
+
+    race = survey_race(source_file(f"acs{ACS_YEAR}_race.dat", folder))
+    for group in RACE_SHARES:
+        places[group] = places["place_id"].map(lambda code: race.get(code, {}).get(group))
+    places["race_years"] = places["place_id"].map(lambda code: f"{ACS_YEAR - 4}-{ACS_YEAR}" if code in race else None)
 
     income = survey_values(source_file(f"acs{ACS_YEAR}_income.dat", folder))
     gini = survey_values(source_file(f"acs{ACS_YEAR}_gini.dat", folder))

@@ -123,6 +123,10 @@ SAID = {"excused": "EXCUSED", "recused": "RECUSED", "abstain": "ABSTAIN", "absta
 # Where a vote was read from. The last is a vote in the margin that leaves a supervisor out, with words beside it that
 # say the supervisor stood aside.
 MARGIN, WORDS, BOTH, ASIDE = "margin", "words", "margin and words", "margin, recusal in words"
+# The margin as the minutes' form has it before anyone fills it in. It is also what a vote would be with the first
+# supervisor moving, the second seconding and everyone aye, and the two cannot be told apart: it stands beside
+# "Continued" and "Withdrawn" as well as "Approved", and far more often than one order in 120 should. Not read.
+UNFILLED = "12345/12345"
 
 
 class Refused(Exception):
@@ -757,6 +761,8 @@ def decide(code, text, roll, seats, why):
     elif margin is not None and not trouble:
         if words and words["ayes"] != sum(word == council_tables.AYE for word in margin.values()):
             motion["problem"] = "the margin and the words differ"
+        elif code == UNFILLED and not words:
+            motion["problem"] = "12345 over 12345, which may be the form's row left as it came"
         else:
             motion.update(cast=margin, read=True, source=ASIDE if aside else MARGIN)
     else:

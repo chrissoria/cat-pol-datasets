@@ -82,10 +82,14 @@ knowing how each was read. One row a county says:
 | `system` | The clerk entered each supervisor's vote in the county's meeting system, and it is read from there. Nothing is worked out. |
 | `minutes page` | Read from the words of minutes the county publishes as a web page ("AYES: ... NOES: ..."). |
 | `minutes text` | Read from the text of a PDF of the minutes. A vote block is read whole or not at all: where it could not be, the agenda line has `votes_read` false, a `problem`, and no rows in `votes`. No document is read by OCR. |
-| `margin code` | Read from a row of digits printed in the margin of the minutes, by the key each set of minutes prints (a digit is a district; a letter under it is a no, an abstention or an absence). |
+| `margin code` | Read from a row of digits printed in the margin of the minutes, by the key each set of minutes prints (a digit is a supervisor; a letter under it is a no, an abstention or an absence). |
+| `count` | Worked out. The minutes give a count, or say "Majority", and name only who was not an aye ("(4-1) (Olsen opposed)", "Approval: Majority NOES: Tryon"); the ayes are the rest of the board as the minutes have it that day. |
+| `unanimous` | Worked out. The minutes say "unan." and name nobody; an aye is given to each supervisor the minutes have on the board and in the room. Merced's "AYES: ALL" is of this kind. |
 
-The first is a record; the other three are readings of a document, checked
-against the documents by hand in samples and not line by line.
+The first is a record. The next three are readings of a document, checked
+against the documents by hand in samples and not line by line. The last two
+put a vote beside a name the document did not print: leave them out to keep
+only what a county printed or entered.
 
 ## The counties
 
@@ -174,7 +178,15 @@ seat or a vote the clerk left blank.
 - **`passed_date` is empty** except for San Diego County. A motion that
   carried may have been one to deny an item or put it off.
 - **A vote is here only where the record names who voted.** A line that says
-  "unanimous" and names nobody has an `action` and no rows in `votes`.
+  "unanimous" and names nobody has an `action` and no rows in `votes`. The
+  exceptions are a few counties whose minutes never list the ayes and do
+  print who sat that day: their votes worked out from a count or from
+  "unanimous" are marked `count` and `unanimous` in `read_from`.
+- **Some counties have agendas and few votes or none.** Ventura and Shasta
+  have no votes; Inyo, Trinity, Mono and Butte have them for a few months;
+  Marin, Glenn and Butte have them only for the motions whose minutes list
+  names, which lean to the divided ones. The notes above say which, and
+  `votes`, `first_vote` and `last_vote` in `counties` show it.
 - **A supervisor with no row for a motion** was absent, or the record does
   not say; only some counties enter an absence.
 - **`district` is empty for many supervisors**, where a county's system does

@@ -259,6 +259,10 @@ def test_where_the_margin_and_the_words_both_speak_they_must_say_the_same():
     margin = ala.decide("32451/32X51", "Approved as recommended", ROLL, SEATS, "")
     assert (margin["read"], margin["source"], margin["mover"], margin["seconder"], margin["mover_from"]) == (True, "margin", "Lena Tam", "Elisa Márquez", "margin")
     assert ala.decide("", "Presented", ROLL, SEATS, "")["block"] is False
+    # The form's row as it came, with no mark and no words, may be no vote at all: it is left unread.
+    unfilled = ala.decide("12345/12345", "Continued to a future date", ROLL, SEATS, "")
+    assert (unfilled["read"], unfilled["cast"]) == (False, {}) and unfilled["problem"].startswith("12345 over 12345")
+    assert ala.decide("12345/1234X", "Approved as recommended", ROLL, SEATS, "")["read"] is True
 
 
 def test_a_supervisor_left_out_of_the_margin_is_recused_only_if_the_words_say_so():

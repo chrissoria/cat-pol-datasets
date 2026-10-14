@@ -73,7 +73,10 @@ TABLES = council_tables.TABLES
 RECENT_DAYS = 60  # meetings this recent are read again: minutes and votes are entered after the meeting
 SEEN_DAYS = 2  # someone is a member if they vote at the board's meetings on this many days: once may be a clerk's slip
 SERVING_DAYS = 120  # the system keeps no terms of office; a member who voted this recently is taken to be serving
-PAUSE = 0.5  # seconds a reader waits after each page: four read at once, and these are small counties' portals
+# Seconds a reader waits after each page; four read at once, so about two pages a second go to a portal. The portals'
+# robots file asks robots for a minute between pages, which would make a whole read take months; Chris decided on
+# 2026-10-13 that a vendor's blanket robots file does not bind a named reader of public records that reads slowly.
+PAUSE = 1.5
 
 # `host` is the county's portal; `board` is what its calendar calls the board of supervisors; `first` is the first year
 # its calendar is asked for. `ends` marks a county that has moved its record elsewhere, and where.
@@ -85,6 +88,7 @@ BOARDS = {
     "santa-cruz-county": {"host": "santacruzcountyca.iqm2.com", "name": "Santa Cruz", "board": ["Board of Supervisors"],
                           "first": 1998,
                           "ends": "The County moved to another system (PrimeGov) in January 2025, and its record here ends there."},
+    "calaveras-county": {"host": "calaverascountyca.iqm2.com", "name": "Calaveras", "board": ["Board of Supervisors"], "first": 2000},
 }
 # The pages give a member's district in their title ("Vice Chair, District 4") except in Santa Clara, where it is typed
 # in here by the name the pages give, from the County's own pages and what is commonly recorded of the Board.

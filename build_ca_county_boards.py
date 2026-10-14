@@ -64,6 +64,10 @@ SYSTEM = "system"              # the clerk entered each member's vote in the cou
 PAGE = "minutes page"          # read from the words of minutes the county publishes as a web page
 TEXT = "minutes text"          # read from the text of a PDF of the minutes
 CODE = "margin code"           # read from a row of digits in the margin of the minutes, by the key the minutes print
+COUNT = "count"                # the minutes give a count (or say "majority") and name who was not an aye: the ayes are the rest of the board that day
+UNANIMOUS = "unanimous"        # the minutes say "unanimous" and name nobody: an aye for everyone on the board and in the room
+WAYS = (SYSTEM, PAGE, TEXT, CODE, COUNT, UNANIMOUS)
+EARLIER = council_tables.EARLIER
 
 # The columns every file of a table has after the shared ones: what most of the readers add. A reader that does not
 # have one leaves it empty. Two are here though only the readers of PDF minutes have them, because a row cannot be
@@ -98,6 +102,13 @@ READERS = {"build_legistar_council.py": ("build_legistar_council", "--city")}
 CIVICCLERK = {"system": "CivicClerk", "read_from": SYSTEM, "builder": "build_civicclerk_board.py", "folder": "civicclerk/{key}"}
 IQM2 = {"system": "IQM2", "read_from": SYSTEM, "builder": "build_iqm2_board.py", "folder": "iqm2/{key}"}
 PDF = {"read_from": TEXT, "folder": "minutes_pdf/{key}"}
+GRANICUS = {"system": "Granicus (minutes pages)", "read_from": PAGE, "builder": "build_granicus_board.py", "folder": "granicus/{key}"}
+# A county whose system has agendas and no vote by member: its minutes are PDFs, which its reader does not read.
+AGENDAS = {"system": "PrimeGov", "read_from": "", "builder": "build_primegov_board.py", "folder": "primegov/{key}",
+           "note": "Agendas and meetings only, with no votes: the County publishes its minutes as PDFs, which are not read here."}
+TYPED = ("Partial, and not a fair picture of what the Board did. The minutes are pages typed by hand that mostly say a motion "
+         "carried unanimously and name nobody; a vote is here only where they list names, {share} of motions{years}, and those "
+         "lean to the divided ones.")
 
 # Each county here: the body's id in bodies.json, then how its record is kept and read, and what to know of it.
 COUNTIES = {
@@ -116,17 +127,48 @@ COUNTIES = {
     "sacramento-county": {**PDF, "system": "AgendaNet, action summaries as PDF", "builder": "build_sacramento_board.py",
                           "note": "Votes are read from the text of each action summary; about 92% of vote blocks could be read whole, "
                                   "and the rest are marked `votes_read` false."},
+    "alameda-county": {**PDF, "system": "Granicus listing, minutes as PDF", "read_from": CODE, "builder": "build_alameda_board.py",
+                       "note": "Votes are read from two rows of digits in the margin of the minutes, by the key each set prints; from "
+                               "2025 some minutes give the vote in words as well, and where both do they agree. A consent "
+                               "calendar's vote is printed again beside each consent item. A margin of `12345` over `12345` is "
+                               "not read (769 motions): it is the form's row before anyone fills it in, and also what a vote "
+                               "would be with the first supervisor moving and all in favor, and the two cannot be told apart."},
+    "ventura-county": {**AGENDAS},
+    "stanislaus-county": {**PDF, "system": "The County's site, minutes as PDF", "builder": "build_stanislaus_board.py",
+                          "note": "The minutes print no roll and never list the ayes: a motion's line says \"(4-1) (Olsen "
+                                  "opposed)\" or only \"unan.\" Who sat on the Board each day is worked out from whom the minutes "
+                                  "name before and after. A supervisor the minutes name is `minutes text`; the ayes behind a count "
+                                  "are `count`; and a vote for each supervisor behind \"unan.\", with nobody away, is `unanimous`, "
+                                  "which is 77% of the votes. Leave out the last, or the last two, to keep only what is printed."},
     "santa-clara-county": {**IQM2, "note": "The County's portal withholds its regular meetings of January to May 2024, which have "
                                            "no lines and no votes here."},
     "san-bernardino-county": {**LEGISTAR, "note": "Meetings are listed from 1980 and agendas from 1996; votes by member begin in July 2019."},
     "contra-costa-county": {**LEGISTAR, "note": "The County took up this system in September 2023; earlier years are not in it."},
     "fresno-county": {**LEGISTAR},
+    "san-francisco-county": {"system": "Legistar (pages)", "read_from": SYSTEM, "builder": "build_legistar_pages_board.py",
+                             "folder": "legistar_pages/{key}",
+                             "note": "City and county are one, and the Board is the legislature of both. Its Legistar has no "
+                                     "working API, so the pages of its site are read; they hold the same record. The Board's "
+                                     "committees are not read. Every item of a consent agenda has the roll call on its own line."},
+    "san-luis-obispo-county": {**PDF, "system": "Granicus and the County's agenda portal, minutes as pages and PDF",
+                               "builder": "build_san_luis_obispo_board.py",
+                               "note": "Read from the Clerk's minutes, which name every supervisor on every motion: a list of names on "
+                                       "a web page until 2011, a grid of marks in a PDF since. Most business passes on one consent "
+                                       "motion, whose vote is on its own line with the items pointing to it; an item has votes of its "
+                                       "own only if it was voted on apart, or a supervisor voted no, abstained or stood aside on it "
+                                       "alone. Six sets of minutes of January to April 2019 print one supervisor twice and another not "
+                                       "at all, so 2019 is 81% read. `result` is `Fail` only where the minutes say a motion failed."},
     "san-joaquin-county": {**IQM2},
     "san-mateo-county": {**LEGISTAR, "note": "The list of items goes back to the 1880s; agendas and votes begin in 2017."},
     "sonoma-county": {**LEGISTAR},
     "tulare-county": {"system": "PrimeGov", "read_from": PAGE, "builder": "build_primegov_board.py", "folder": "primegov/{key}",
                       "note": "Votes are read from the minutes the County publishes as pages, from October 2020."},
     "santa-barbara-county": {**LEGISTAR},
+    "merced-county": {**PDF, "system": "The County's agenda pages, minutes as PDF", "builder": "build_merced_board.py",
+                      "note": "Agendas from July 2008; votes from January 2022 only. The minutes print a vote by district number "
+                              "(\"AYES: 2, 3, 4 NOES: 1, 5\"), read by the roster at the head of the same minutes, or as \"AYES: "
+                              "ALL\", which is five ayes and `read_from` `unanimous` here. Minutes of September 2019 to November "
+                              "2020 are scans and are not read; earlier ones are on a site of the County's that refuses this reader."},
     "placer-county": {**LEGISTAR, "note": "The County took up this system in July 2026. What it holds from before is practice entered "
                                           "while it was set up, and is left out."},
     "santa-cruz-county": {**IQM2, "site": "https://santacruzcountyca.iqm2.com/Citizens/",
@@ -140,10 +182,50 @@ COUNTIES = {
     "nevada-county": {**LEGISTAR, "note": "The clerk enters what was done, and the votes, some months after a meeting."},
     "sutter-county": {**IQM2},
     "mendocino-county": {**LEGISTAR},
+    "yuba-county": {**PDF, "system": "AgendaSuite portal, minutes as PDF", "builder": "build_yuba_board.py",
+                    "note": "From July 2017. Read from the Clerk's Summary of Proceedings, which names every supervisor on every "
+                            "motion; a motion whose names are not exactly that meeting's roll call is left unread (29 of 1,589). "
+                            "The consent agenda's vote is on its heading's line. Sixteen meetings have no minutes on the portal."},
     "lake-county": {**LEGISTAR, "note": "Votes by member are entered for May 2014 to 2021, and rarely since."},
     "tehama-county": {**LEGISTAR, "note": "Meetings are listed from 1964 and agendas from 2013; votes by member begin in December 2023."},
-    "tuolumne-county": {**CIVICCLERK}, "lassen-county": {**LEGISTAR}, "del-norte-county": {**CIVICCLERK}, "colusa-county": {**CIVICCLERK},
+    "tuolumne-county": {**CIVICCLERK}, "calaveras-county": {**PDF, "system": "IQM2 portal, minutes as PDF", "builder": "build_calaveras_board.py",
+                         "note": "Read from the minutes document of each meeting, printed three ways over the years. From September "
+                                 "2014 every supervisor is named on each motion. Before then most votes say only \"Unanimous\" or "
+                                 "\"Majority\" with the exceptions named, and the ayes are those the minutes have present, so an aye "
+                                 "there is wrong for a supervisor who stepped out without the Clerk noting it. Minutes are published "
+                                 "about four months after a meeting, and about one meeting in ten has none."},
+    "san-benito-county": {**PDF, "system": "Granicus, minutes as PDF", "builder": "build_san_benito_board.py",
+                          "note": "Votes from August 2022, where the minutes name every supervisor under every motion; a motion is "
+                                  "read only if its names are exactly the Board printed at the head and agree with the printed "
+                                  "count (1,110 of 1,163). Uneven: the County lists no minutes here for 2020 and 2021 and few before "
+                                  "2022, and 35 sets, 14 of them from 2026, are scans that are not read. The minutes print a count "
+                                  "and no outcome, so `result` is empty."},
+    "amador-county": {**PDF, "system": "Granicus, draft minutes as PDF", "builder": "build_amador_board.py",
+                      "note": "From September 2023, and from draft minutes: the draft attached to the agenda of the meeting that "
+                              "approved them, the approved copy being on a site that refuses readers. Two motions in three say only "
+                              "\"carried unanimously\": there an aye is given to each supervisor the roll call has present, which "
+                              "is wrong for one who stepped out without the minutes saying so (`read_from` says which votes these "
+                              "are). Regular items have no agenda number."},
+    "lassen-county": {**LEGISTAR}, "del-norte-county": {**CIVICCLERK}, "colusa-county": {**CIVICCLERK},
     "plumas-county": {**CIVICCLERK}, "mariposa-county": {**CIVICCLERK}, "modoc-county": {**CIVICCLERK}, "alpine-county": {**CIVICCLERK},
+    "marin-county": {**GRANICUS, "note": TYPED.format(share="about 28%", years="")},
+    # Butte has two records. `earlier` is the one it kept before: its tables are put before the others (with_earlier).
+    "butte-county": {**CIVICCLERK, "system": "CivicClerk, and Granicus (minutes pages) before",
+                     "earlier": {**GRANICUS, "mark": "g", "bodies": {"Board of Supervisors": "Butte County Board of Supervisors"}},
+                     "note": "Two records, both thin. " + TYPED.format(share="about 27%", years=" from June 2021 to May 2024")
+                             + " From July 2024 the County's record is in CivicClerk, where the clerk entered votes by member "
+                               "in August and September 2024 only."},
+    "shasta-county": {**AGENDAS},
+    "glenn-county": {**GRANICUS, "note": TYPED.format(share="about 7%", years="")},
+    "inyo-county": {**CIVICCLERK, "note": "Agendas from 2016. The clerk entered votes by member for two weeks of August 2019 only."},
+    "trinity-county": {**CIVICCLERK, "note": "Agendas from April 2024. The clerk entered votes by member from May to September 2024 only."},
+    "sierra-county": {**PDF, "system": "AgendaCenter, minutes as PDF", "builder": "build_sierra_board.py",
+                      "note": "From June 2013. The minutes never list the ayes: a motion gives the mover, the seconder, a count "
+                              "and the names of those who voted no, were absent or abstained. Those named are `minutes text`; "
+                              "every aye is the rest of the roll printed at the head of the same minutes, checked against the "
+                              "count, and is `count`. About 4% of motions are not read (no count, or one the roll contradicts), "
+                              "and 19 sets of minutes could not be read at all."},
+    "mono-county": {**CIVICCLERK, "note": "The County took up this system in December 2025. Five votes by member so far."},
 }
 CIVICCLERK_NOTE = "Votes begin the month the clerk began entering them in this system; earlier years are in PDF minutes, not read."
 
@@ -156,26 +238,83 @@ def facts_of(key, listed=None):
     """What is known of one county before its tables are read: its names, its code, where its tables are and how they were read."""
     body = (listed or {body["id"]: body for body in bodies.read_bodies()})[key]
     county = COUNTIES[key]
-    name = body["name"].replace(" County Board of Supervisors", "")
+    name = body["name"].replace(" County Board of Supervisors", "").replace(" Board of Supervisors", "")  # San Francisco's has no "County"
     slug = name.lower().replace(" ", "-")
     return {
         "key": key, "county": name, "slug": slug, "county_fips": body["place"], "body": body["body"],
         "system": county["system"], "builder": county["builder"], "site": county.get("site") or body.get("url", ""),
         "folder": county["folder"].format(key=key), "raw": county.get("raw", True), "daily": county.get("daily", False),
         "drop": county.get("drop", {}), "read_from": county["read_from"],
+        "earlier": {**county["earlier"], "folder": county["earlier"]["folder"].format(key=key)} if county.get("earlier") else None,
         "room": ROOM.format(fips=body["place"]) if body.get("world") == "chamber" else "",
         "note": county.get("note") or (CIVICCLERK_NOTE if county["system"] == "CivicClerk" else ""),
     }
 
 
 def read_from(facts, votes, meetings):
-    """How each vote was read. It is one way a county, but for two that changed the way they print a vote."""
+    """How each vote was read. It is one way a county, but for those that changed the way they print a vote."""
     if facts["key"] == "orange-county" and "code" in votes.columns:
         return votes["code"].fillna("").map(lambda code: CODE if code else TEXT)
     if facts["key"] == "yolo-county" and "source" in meetings.columns:
         source = votes["meeting_id"].map(dict(zip(meetings["meeting_id"], meetings["source"]))).fillna("")
         return source.map(lambda kind: TEXT if kind == "minutes document" else PAGE)
-    return pd.Series(facts["read_from"], index=votes.index)
+    if facts["key"] == "alameda-county" and "source" in votes.columns:
+        return votes["source"].fillna("").map(lambda source: TEXT if source == "words" else CODE)
+    if "established" in votes.columns:  # a reader of minutes that works some votes out says of each how it was established
+        ways = votes["established"].fillna("").map(lambda how: {"count": COUNT, "majority": COUNT, "unanimous": UNANIMOUS, "all": UNANIMOUS}.get(how, TEXT))
+        if "format" in meetings.columns:  # minutes that were a web page in some years and a PDF in others (San Luis Obispo)
+            pages = set(meetings.loc[meetings["format"].fillna("") == "html", "meeting_id"])
+            ways = ways.where(~(votes["meeting_id"].isin(pages) & (ways == TEXT)), PAGE)
+        return ways
+    ways = pd.Series(facts["read_from"], index=votes.index)
+    return votes["read_from"].fillna(ways) if "read_from" in votes.columns else ways  # a county's earlier record says its own
+
+
+def with_earlier(own, earlier, spec):
+    """A county's tables with those of the record it kept before put ahead of them: {table name: table}.
+
+    Of the earlier record's meetings only those whose agenda was read are kept; the newer system's bare listing of the
+    same meeting (that day, that body, nothing on it) gives way to it. The two systems number their meetings alike, so
+    the earlier one's meeting ids are given `mark` in front. Where the earlier record has a member by family name only
+    and the newer has one person of that name, the fuller name is used, and the two are one row of members.
+    """
+    mark, bodies = spec.get("mark", ""), spec.get("bodies", {})
+    names = list(own["members"]["name"])
+    fuller = {}
+    for short in earlier["members"]["name"]:
+        match = [name for name in names if name.split()[-1] == short]
+        if " " not in short and len(match) == 1:
+            fuller[short] = match[0]
+    old = {}
+    for name in TABLES:
+        table = earlier[name].copy()
+        if "meeting_id" in table.columns:
+            table["meeting_id"] = table["meeting_id"].map(lambda value: f"{mark}{value}" if value else value)
+        if "body" in table.columns:
+            table["body"] = table["body"].replace(bodies)
+        for column in ("member", "mover", "seconder") + (("name",) if name == "members" else ()):
+            if column in table.columns:
+                table[column] = table[column].replace(fuller)
+        old[name] = table
+    old["meetings"] = old["meetings"][old["meetings"]["items"].fillna(0) > 0]
+    old["votes"] = old["votes"].assign(read_from=spec["read_from"])
+    read = set(zip(old["meetings"]["date"], old["meetings"]["body"]))
+    listed = own["meetings"]
+    bare = (listed["items"].fillna(0) == 0) & pd.Series([pair in read for pair in zip(listed["date"], listed["body"])], index=listed.index)
+    out = {name: pd.concat([old[name], listed[~bare] if name == "meetings" else own[name]], ignore_index=True)
+           for name in TABLES if name != "members"}
+    people = own["members"].astype({column: object for column in ("start", "first_vote", "last_vote")})
+    for row in old["members"].itertuples(index=False):
+        same = people.index[people["name"] == row.name]
+        if not len(same):
+            people = pd.concat([people, pd.DataFrame([row._asdict()])], ignore_index=True)
+            continue
+        at = same[0]
+        days = lambda column, pick: pick([day for day in (people.at[at, column], getattr(row, column)) if isinstance(day, str) and day], default="")
+        people.at[at, "start"], people.at[at, "first_vote"], people.at[at, "last_vote"] = days("start", min), days("first_vote", min), days("last_vote", max)
+        people.at[at, "votes"] = int(people.at[at, "votes"] or 0) + int(row.votes or 0)
+    out["members"] = people.sort_values(["first_vote", "name"]).reset_index(drop=True)
+    return out
 
 
 def one_shape(name, table, facts):
@@ -217,7 +356,7 @@ def county_row(facts, tables, read_on):
     meetings, votes, members = tables["meetings"], tables["votes"], tables["members"]
     soon = (datetime.now(timezone.utc) + pd.Timedelta(days=366)).strftime("%Y-%m-%d")  # a stray date a century on is not the end
     held = meetings[(meetings["items"] > 0) & (meetings["date"] <= soon) & (meetings["date"] != "")]
-    ways = [way for way in (SYSTEM, PAGE, TEXT, CODE) if (votes["read_from"] == way).any()] or [facts["read_from"]]
+    ways = [way for way in WAYS if (votes["read_from"] == way).any()] or [facts["read_from"]]
     return {
         "county": facts["county"], "county_fips": facts["county_fips"], "body": facts["body"], "system": facts["system"],
         "read_from": ", ".join(ways), "site": facts["site"],
@@ -234,11 +373,44 @@ COUNTY_COLUMNS = ["county", "county_fips", "body", "system", "read_from", "site"
                   "last_vote", *TABLES, "serving", "kept_current", "read_on", "room", "builder", "note"]
 
 
-def build_county(key, out_dir, listed=None, folder=None):
-    """One county's files, from the folder its reader wrote (its usual one, unless told another). Returns its line for the counties table."""
+def raw_folder(facts, out_dir, part=""):
+    """Where a county's own tables are kept in the dataset: raw/<county>, and raw/<county>/earlier for its earlier record."""
+    return Path(out_dir) / "raw" / facts["slug"] / part
+
+
+def fetched(facts, out_dir, part=""):
+    """A county's own tables as published under raw/, put where this run keeps them. The folder they are in."""
+    if not facts["raw"]:
+        raise FileNotFoundError(f"{facts['key']} has no tables here, and its own are not kept in {REPO}")
+    from huggingface_hub import hf_hub_download
+    folder = raw_folder(facts, out_dir, part)
+    for name in TABLES:
+        hf_hub_download(REPO, str((folder / f"{name}.parquet").relative_to(out_dir)), repo_type="dataset", token=bills.HF_TOKEN,
+                        local_dir=out_dir)
+    return folder
+
+
+def tables_in(folder):
+    return all((Path(folder) / f"{name}.parquet").exists() for name in TABLES)
+
+
+def build_county(key, out_dir, listed=None, folder=None, part=""):
+    """One county's files, from the folder its reader wrote (its usual one, unless told another: `part` says if that
+    other is the county's earlier record). Returns its line for the counties table."""
     facts = facts_of(key, listed)
-    folder = Path(folder) if folder else bills.SCRIPT_DIR / facts["folder"]
+    folders = {"": bills.SCRIPT_DIR / facts["folder"]}
+    if facts["earlier"]:
+        folders[EARLIER] = bills.SCRIPT_DIR / facts["earlier"]["folder"]
+    if folder:
+        folders[part] = Path(folder)
+    here = tables_in(folders[""])
+    for which in folders:
+        if not tables_in(folders[which]):
+            folders[which] = fetched(facts, out_dir, which)  # its reader's tables are not kept here: they are taken as published
+    folder = folders[""]
     own = {name: pd.read_parquet(folder / f"{name}.parquet") for name in TABLES}
+    if facts["earlier"]:
+        own = with_earlier(own, {name: pd.read_parquet(folders[EARLIER] / f"{name}.parquet") for name in TABLES}, facts["earlier"])
     tables = {}
     for name in TABLES:
         table = own[name].drop(columns=[column for column in facts["drop"].get(name, []) if column in own[name].columns])
@@ -246,10 +418,16 @@ def build_county(key, out_dir, listed=None, folder=None):
             table = table.assign(read_from=read_from(facts, table, own["meetings"]), vote_kind=table["vote"].fillna("").map(vote_kind))
         tables[name] = one_shape(name, table, facts)
         write(tables[name], out_dir / "data" / name / f"{facts['slug']}.parquet", name)
-        if facts["raw"]:
-            (out_dir / "raw" / facts["slug"]).mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(folder / f"{name}.parquet", out_dir / "raw" / facts["slug"] / f"{name}.parquet")
+        for which, written in folders.items():
+            kept = raw_folder(facts, out_dir, which) / f"{name}.parquet"
+            if facts["raw"] and kept.resolve() != (written / f"{name}.parquet").resolve():
+                kept.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(written / f"{name}.parquet", kept)
     read_on = datetime.fromtimestamp((folder / "votes.parquet").stat().st_mtime, timezone.utc).strftime("%Y-%m-%d")
+    if not here:  # fetched today, read whenever the published table says
+        counties = held_counties(out_dir)
+        before = counties.loc[counties["county_fips"] == facts["county_fips"], "read_on"] if counties is not None else []
+        read_on = before.iloc[0] if len(before) else read_on
     return county_row(facts, tables, read_on)
 
 
@@ -293,15 +471,16 @@ def held_counties(out_dir):
         return pd.read_parquet(path) if path.exists() else None
 
 
-def publish_county(key, folder, out_dir=OUT_DIR):
-    """Publish one county from the tables its reader has just written in `folder`. Every reader of a county board ends here."""
+def publish_county(key, folder, out_dir=OUT_DIR, part=""):
+    """Publish one county from the tables its reader has just written in `folder`. Every reader of a county board ends here.
+    `part` is EARLIER when the reader is that of the record the county kept before its present one."""
     if key not in COUNTIES:
         raise ValueError(f"{key} is not among the counties of {REPO}: add it to COUNTIES in build_ca_county_boards.py")
     problem = bills.hf_write_problem(REPO)
     if problem:
         raise PermissionError(problem)
     out_dir = Path(out_dir)
-    counties = counties_table([build_county(key, out_dir, folder=folder)], held_counties(out_dir))
+    counties = counties_table([build_county(key, out_dir, folder=folder, part=part)], held_counties(out_dir))
     write(counties, out_dir / "data" / "counties.parquet")
     return upload(out_dir, [facts_of(key)["slug"]], True, counties)
 
@@ -362,7 +541,7 @@ def upload(out_dir, slugs, with_card, counties):
     files = [out_dir / "data" / "counties.parquet"]
     for slug in slugs:
         files += [out_dir / "data" / name / f"{slug}.parquet" for name in TABLES]
-        files += sorted((out_dir / "raw" / slug).glob("*.parquet"))
+        files += sorted((out_dir / "raw" / slug).rglob("*.parquet"))
     operations = [CommitOperationAdd(path_in_repo=str(path.relative_to(out_dir)), path_or_fileobj=str(path)) for path in files]
     if with_card or not api.file_exists(REPO, "README.md", repo_type="dataset"):
         operations.append(CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=card(counties).encode("utf-8")))

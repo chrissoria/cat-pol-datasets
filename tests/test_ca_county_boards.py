@@ -55,6 +55,44 @@ def test_a_vote_says_how_it_was_read_and_two_counties_changed_their_way():
     assert boards.read_from({"key": "orange-county", "read_from": boards.TEXT}, votes, meetings).tolist() == [boards.CODE, boards.TEXT]
     assert boards.read_from({"key": "yolo-county", "read_from": boards.PAGE}, votes, meetings).tolist() == [boards.TEXT, boards.PAGE]
     assert boards.read_from(FACTS, votes, meetings).tolist() == [boards.SYSTEM, boards.SYSTEM]
+    # Alameda's margin and its words; Stanislaus's votes the minutes print, and those worked out from a count or "unan."
+    marked = pd.DataFrame({"source": ["margin", "words", "margin and words", "margin, recusal in words"]})
+    assert boards.read_from({"key": "alameda-county", "read_from": boards.CODE}, marked, meetings).tolist() == [
+        boards.CODE, boards.TEXT, boards.CODE, boards.CODE]
+    worked = pd.DataFrame({"established": ["named", "count", "unanimous"]})
+    assert boards.read_from({"key": "stanislaus-county", "read_from": boards.TEXT}, worked, meetings).tolist() == [
+        boards.TEXT, boards.COUNT, boards.UNANIMOUS]
+    paged = pd.DataFrame({"meeting_id": [1, 2, 1], "established": ["named", "named", "majority"]})
+    forms = pd.DataFrame({"meeting_id": [1, 2], "format": ["html", "pdf"]})
+    assert boards.read_from({"key": "san-luis-obispo-county", "read_from": boards.TEXT}, paged, forms).tolist() == [
+        boards.PAGE, boards.TEXT, boards.COUNT]
+    assert boards.read_from({"key": "ventura-county", "read_from": ""}, votes.iloc[:0], meetings).tolist() == []
+
+
+def test_a_countys_earlier_record_is_put_before_its_present_one():
+    def tables(meetings, votes, members):
+        blank = lambda name, rows: pd.DataFrame(rows, columns=council_tables.COLUMNS[name])
+        return {"items": blank("items", []), "agenda_items": blank("agenda_items", []), "meetings": blank("meetings", meetings),
+                "votes": blank("votes", votes), "members": blank("members", members)}
+    meeting = lambda number, date, body, items: {"meeting_id": number, "date": date, "body": body, "items": items}
+    vote = lambda meeting_id, date, member: {"item_id": f"{meeting_id}-1", "meeting_id": meeting_id, "date": date, "member": member, "vote": "AYE"}
+    member = lambda name, first, last, votes: {"name": name, "serving": False, "first_vote": first, "last_vote": last, "votes": votes}
+    now = tables([meeting("7", "2024-05-28", "Butte County Board of Supervisors", 0),   # listed bare: the earlier record has its agenda
+                  meeting("8", "2024-05-28", "Planning Commission", 0), meeting("9", "2024-08-27", "Butte County Board of Supervisors", 40)],
+                 [vote("9", "2024-08-27", "Tami Ritter")], [member("Tami Ritter", "2024-08-27", "2024-09-10", 4)])
+    before = tables([meeting("7", "2024-05-28", "Board of Supervisors", 30), meeting("5", "2012-01-10", "Board of Supervisors", 0)],
+                    [vote("7", "2024-05-28", "Ritter"), vote("7", "2024-05-28", "Lucero")],
+                    [member("Ritter", "2021-06-22", "2024-05-28", 262), member("Lucero", "2021-06-22", "2022-10-25", 108)])
+    spec = {"read_from": boards.PAGE, "mark": "g", "bodies": {"Board of Supervisors": "Butte County Board of Supervisors"}}
+    joined = boards.with_earlier(now, before, spec)
+    assert joined["meetings"]["meeting_id"].tolist() == ["g7", "8", "9"]  # its meeting ids marked; its bare listings left out
+    assert joined["meetings"]["body"].tolist()[0] == "Butte County Board of Supervisors"
+    assert joined["votes"][["meeting_id", "member"]].values.tolist() == [["g7", "Tami Ritter"], ["g7", "Lucero"], ["9", "Tami Ritter"]]
+    ways = boards.read_from({"key": "butte-county", "read_from": boards.SYSTEM}, joined["votes"], joined["meetings"])
+    assert ways.tolist() == [boards.PAGE, boards.PAGE, boards.SYSTEM]
+    people = joined["members"].set_index("name")
+    assert list(people.index) == ["Lucero", "Tami Ritter"]
+    assert people.loc["Tami Ritter", ["first_vote", "last_vote", "votes"]].tolist() == ["2021-06-22", "2024-09-10", 266]
 
 
 def test_a_clerks_word_for_a_vote_is_one_of_a_few_kinds():
@@ -92,16 +130,24 @@ def test_a_readers_tables_for_a_county_board_go_to_the_one_dataset(monkeypatch, 
     council_tables.published("chrissoria/oakland-council", "votes")
     assert asked == [(boards.REPO, "raw/san-mateo/votes.parquet"), ("chrissoria/oakland-council", "data/votes.parquet")]
     sent = []
-    monkeypatch.setattr(boards, "publish_county", lambda key, folder: sent.append((key, folder)) or True)
+    monkeypatch.setattr(boards, "publish_county", lambda key, folder, part="": sent.append((key, folder, part)) or True)
     assert council_tables.publish("chrissoria/lake-county-board", tmp_path, "a card of its own", True, "Update") is True
-    assert sent == [("lake-county", tmp_path)]
+    assert sent == [("lake-county", tmp_path, "")]
+    # A county's record in the system it kept before is that county's too, kept apart from its present one.
+    earlier = "chrissoria/butte-county-earlier-board"
+    assert (council_tables.board_of(earlier), council_tables.part_of(earlier)) == ("butte-county", "earlier")
+    assert council_tables.part_of("chrissoria/butte-county-board") == "" and council_tables.part_of("chrissoria/oakland-council") == ""
+    council_tables.published(earlier, "votes")
+    assert asked[-1] == (boards.REPO, "raw/butte/earlier/votes.parquet")
+    council_tables.publish(earlier, tmp_path, "", False, "Update")
+    assert sent[-1] == ("butte-county", tmp_path, "earlier")
 
 
 def test_a_county_not_listed_is_not_published(tmp_path):
     try:
-        boards.publish_county("alameda-county", tmp_path)
+        boards.publish_county("kern-county", tmp_path)
     except ValueError as e:
-        assert "alameda-county is not among the counties" in str(e)
+        assert "kern-county is not among the counties" in str(e)
     else:
         raise AssertionError("published a county that is not listed")
 
@@ -136,3 +182,37 @@ def test_the_daily_run_reads_nothing_if_the_token_may_not_write(monkeypatch, tmp
     monkeypatch.setattr(boards.bills, "hf_write_problem", lambda repo=None: "the token has no write permission")
     monkeypatch.setattr(boards.importlib, "import_module", lambda name: (_ for _ in ()).throw(AssertionError("a reader was called")))
     assert boards.read_some(30, tmp_path) == 1
+
+
+def test_a_county_whose_tables_are_not_kept_here_is_built_from_those_published(monkeypatch, tmp_path):
+    facts = boards.facts_of("alpine-county")
+    asked = []
+
+    def download(repo, file, **more):
+        asked.append(file)
+        name = file.rsplit("/", 1)[1][:-len(".parquet")]
+        table = pd.DataFrame({column: ["x"] for column in council_tables.COLUMNS[name]})
+        for column in boards.WHOLE & set(table.columns):
+            table[column] = 1
+        if name == "meetings":
+            table["date"] = "2026-10-06"
+        if name == "members":
+            table["serving"] = True
+        (tmp_path / "raw" / "alpine").mkdir(parents=True, exist_ok=True)
+        table.to_parquet(tmp_path / file, index=False)
+        return str(tmp_path / file)
+
+    import huggingface_hub
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
+    monkeypatch.setattr(boards, "held_counties", lambda out_dir: pd.DataFrame({"county_fips": [facts["county_fips"]], "read_on": ["2026-10-12"]}))
+    row = boards.build_county("alpine-county", tmp_path, folder=tmp_path / "nowhere")
+    assert sorted(asked) == sorted(f"raw/alpine/{name}.parquet" for name in boards.TABLES)
+    assert (row["county"], row["votes"], row["read_on"]) == ("Alpine", 1, "2026-10-12")  # read when the published table says, not today
+    assert (tmp_path / "data" / "votes" / "alpine.parquet").exists()
+    # San Diego's own tables are not kept in the dataset, so without them here there is nothing to build it from.
+    try:
+        boards.build_county("sd-county", tmp_path, folder=tmp_path / "nowhere")
+    except FileNotFoundError as e:
+        assert "sd-county has no tables here" in str(e)
+    else:
+        raise AssertionError("built San Diego from nothing")

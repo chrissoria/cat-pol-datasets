@@ -93,7 +93,7 @@ def test_a_year_page_gives_each_meeting_its_day_and_documents_and_leaves_out_wha
     meetings = stan.meetings_table(stan.rows_of(page, 2026)).set_index("meeting_id")
     assert list(meetings.index) == ["2026-03-17", "2026-03-30-special"]  # a day with no meeting and a row in a comment are not meetings
     first, special = meetings.loc["2026-03-17"], meetings.loc["2026-03-30-special"]
-    assert (first["date"], first["time"]) == ("2026-03-17", "6:30 p.m.")
+    assert (first["date"], first["time"]) == ("2026-03-17", "6:30 PM")  # the hour as every board has it
     assert first["minutes_url"] == "https://www.stancounty.com/bos/minutes/2026/min03-17-26.pdf"
     assert first["video_url"] == "https://www.stancounty.com/bos/video/03-17-2026.shtm"
     assert special["agenda_url"] == "https://www.stancounty.com/bos/Agenda/2026/Ag%2003-30-26.pdf"

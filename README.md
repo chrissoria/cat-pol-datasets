@@ -82,7 +82,7 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   enactments through a browser to get past a bot check.
 - **County boards are one dataset,
   [`ca-county-boards`](https://huggingface.co/datasets/chrissoria/ca-county-boards)**,
-  to be filtered by county: 32 California boards of supervisors in the same
+  to be filtered by county: 42 California boards of supervisors in the same
   tables with the same columns, a file a county within each table, and a
   `counties` table that says how each county's record was read and what to
   know of it. `build_ca_county_boards.py` makes it from the tables each
@@ -99,16 +99,31 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
 - Counties on other systems have a reader for each system, all with the same
   options (`--county`, `--base`, `--no-upload`, `--write-card`) and the same
   five tables: `build_civicclerk_board.py` (Alpine, Colusa, Del Norte,
-  Mariposa, Modoc, Plumas, Tuolumne), `build_primegov_board.py` (Tulare),
+  Mariposa, Modoc, Plumas, Tuolumne, and Butte, Inyo, Mono and Trinity, whose
+  clerks entered votes for a few months only), `build_primegov_board.py`
+  (Tulare; Ventura and Shasta for agendas, their minutes being PDFs),
   `build_iqm2_board.py` (Santa Clara, San Joaquin, Santa Cruz, Sutter),
-  `build_destiny_board.py` (Yolo) and `build_granicus_board.py` (Glenn,
-  Butte, Marin; not published).
-- Five counties publish how each supervisor voted only in PDF documents, and
-  have a reader each that takes it from the documents' own text:
-  `build_sacramento_board.py`, `build_orange_board.py`,
-  `build_la_county_board.py`, `build_alameda_board.py` and
-  `build_stanislaus_board.py` (the last two not published). A vote there is
-  read whole or not at all; what could not be read is marked, not guessed.
+  `build_destiny_board.py` (Yolo), `build_granicus_board.py`
+  (Glenn, Marin, and Butte before 2024: minutes typed by hand, with votes
+  only where they list names) and `build_legistar_pages_board.py` (San
+  Francisco, whose Legistar API is broken: the pages of its site are read).
+- Twelve counties publish how each supervisor voted only in their minutes,
+  mostly PDF documents, and have a reader each that takes it from the
+  documents' own text: `build_sacramento_board.py`, `build_orange_board.py`,
+  `build_la_county_board.py`, `build_alameda_board.py`,
+  `build_stanislaus_board.py`, `build_yuba_board.py`, `build_merced_board.py`,
+  `build_sierra_board.py`, `build_calaveras_board.py`,
+  `build_san_benito_board.py`, `build_amador_board.py` and
+  `build_san_luis_obispo_board.py`. A vote there is read whole or not at all;
+  what could not be read is marked, not guessed. Where minutes do not list
+  the ayes (Stanislaus always; Amador mostly; Merced, Sierra and Calaveras
+  before 2014 often), a vote is worked out from a count or from "unanimous"
+  and says so (`read_from` is `count` or `unanimous`). Amador's are draft
+  minutes, the only copies it publishes where a reader is let in.
+- Every reader names itself to the host it reads (`cat-pol-datasets`, with
+  this repository's address) and goes slowly: about a request a second, and
+  one document a minute at Calaveras, whose portal asks for that. A host that
+  answers with a refusal, a bot check or a login is not read.
 - A board has a room in Capitol World once its entry in `bodies.json` says so
   (`world`, `chamber` and how the room words things) and
   `build_chamber_snapshot.py --body <id>` has written its file. A long record
@@ -124,7 +139,8 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   place everything else reads what a place is from: one row for the country
   and for each state, territory, county, city, named unincorporated
   community and district of Congress or a state legislature, with what it is
-  part of, population, area, how urban it is,
+  part of, population, area, how urban it is, the shares of its people who
+  are White, Black, Asian, Hispanic or Latino, or of another race or several,
   income, inequality, home value, GDP for each person, and for states the age
   bands and crime rates; links to its flag and seal; and how many records the
   other datasets here hold of it. It also writes the table of bodies and

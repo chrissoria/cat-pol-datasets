@@ -76,7 +76,8 @@ def standard(tables):
 # (build_ca_county_boards.py): as its reader wrote them under raw/<county>/, and in the shape every county has under data/.
 # A reader still names where its tables go as it always did, "chrissoria/<county>-county-board", and is sent on from here.
 COUNTY_BOARDS = "chrissoria/ca-county-boards"
-BOARD = re.compile(r"chrissoria/([a-z-]+-county)-board")
+BOARD = re.compile(r"chrissoria/([a-z-]+-county)(-earlier)?-board")
+EARLIER = "earlier"  # the record a county kept in another system before the one it has now, where both are read
 
 
 def board_of(repo):
@@ -85,12 +86,19 @@ def board_of(repo):
     return found[1] if found else None
 
 
+def part_of(repo):
+    """EARLIER if a reader's tables are those of a county's earlier record ("chrissoria/butte-county-earlier-board"), else ""."""
+    found = BOARD.fullmatch(repo)
+    return EARLIER if found and found[2] else ""
+
+
 def published(repo, name):
     """A table of a dataset as last published, or None. A county board's is the one its reader last wrote."""
     import pandas as pd
     import build_federal_bills as bills
     county = board_of(repo)
-    place, file = (COUNTY_BOARDS, f"raw/{county[:-len('-county')]}/{name}.parquet") if county else (repo, f"data/{name}.parquet")
+    part = f"{part_of(repo)}/" if part_of(repo) else ""
+    place, file = (COUNTY_BOARDS, f"raw/{county[:-len('-county')]}/{part}{name}.parquet") if county else (repo, f"data/{name}.parquet")
     try:
         from huggingface_hub import hf_hub_download
         return pd.read_parquet(hf_hub_download(place, file, repo_type="dataset", token=bills.HF_TOKEN))
@@ -128,7 +136,7 @@ def publish(repo, out_dir, card, with_card, message):
     import build_federal_bills as bills
     if board_of(repo):
         import build_ca_county_boards
-        return build_ca_county_boards.publish_county(board_of(repo), out_dir)
+        return build_ca_county_boards.publish_county(board_of(repo), out_dir, part=part_of(repo))
     from huggingface_hub import CommitOperationAdd, HfApi
     hub = HfApi(token=bills.HF_TOKEN)
     hub.create_repo(repo, repo_type="dataset", exist_ok=True)

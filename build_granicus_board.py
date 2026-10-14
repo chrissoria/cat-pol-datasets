@@ -64,7 +64,9 @@ CARD_FILE = bills.SCRIPT_DIR / "README_granicus_board.md"  # one card for every 
 TABLES = council_tables.TABLES
 RECENT_DAYS = 60  # meetings this recent are read again: minutes are posted, and corrected, after the meeting
 SEEN_DAYS = 2  # someone is a member if they vote at the board's meetings on this many days: once may be a clerk's slip
-SERVING_DAYS = 120  # the minutes keep no terms of office; a member who voted this recently is taken to be serving
+# The minutes keep no terms of office; a member who voted this recently is taken to be serving. It is half a year and
+# not a season because the minutes name who voted on few motions: months can pass between two that do.
+SERVING_DAYS = 180
 DESCRIPTION = 4000  # the most of what the minutes say under a line that is kept with it
 
 # `host` and `view` are where the county's listing is; `board` is how the listing names the board of supervisors.
@@ -82,7 +84,9 @@ BOARDS = {
     # Butte's minutes are a web page only from June 2021 to May 2024: before that they are PDFs, which are not read,
     # the last meetings here have none, and from August 2024 the County's record is in CivicClerk
     # (build_civicclerk_board.py).
+    # In the one dataset of county boards its tables are the earlier part of Butte's (`repo`), before CivicClerk's.
     "butte-county": {"host": "buttecounty.granicus.com", "view": 2, "name": "Butte", "board": r"Board of Supervisors|Board Meeting",
+                     "repo": "chrissoria/butte-county-earlier-board",
                      "numbers": [r"\d+[A-Z]?\.", r"\d+\.\d+\.?", r"[A-Z]\.", r"\d+\)"],
                      "lift": r"(?i)^adopt(ion of)?( the)? consent agenda",
                      "end": r"^(Consent Agenda: [Tt]hese (are )?items|Meeting Information:|Agenda Format and Meeting Order:)"},
@@ -111,7 +115,7 @@ _CHALLENGE = re.compile(r"captcha|just a moment|cf-chl|challenge-platform|access
 
 
 def repo_of(key):
-    return f"chrissoria/{key}-board"
+    return BOARDS[key].get("repo") or f"chrissoria/{key}-board"
 
 
 def fetch(url, tries=4):

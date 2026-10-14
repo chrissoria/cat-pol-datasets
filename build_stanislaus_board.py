@@ -209,6 +209,12 @@ def year_url(year):
     return f"{SITE}/bos/agenda/{year}/" if year >= LISTED_FROM else f"{SITE}/bos/minutes/{year}/"
 
 
+def clock(hour):
+    """An hour as every board's table has it: "6:30 PM" for the County's "6:30 p.m."."""
+    found = re.fullmatch(r"(\d{1,2}:\d{2})\s*([ap])\.?\s*m\.?", clean(hour), re.I)
+    return f"{found[1]} {found[2].upper()}M" if found else clean(hour)
+
+
 def rows_of(page, year):
     """The meetings on one year's page, as the site has them. A day marked "No Meeting" is not one."""
     rows = []
@@ -226,7 +232,7 @@ def rows_of(page, year):
         suffix = _SUFFIX.search(minutes.replace("%20", " "))
         date = f"{year}-{int(found[1]):02d}-{int(found[2]):02d}"
         rows.append({"meeting_id": date + (f"-{suffix[1].lower()}" if suffix else ""), "date": date,
-                     "time": next((cell for cell in cells if _HOUR.fullmatch(cell)), ""),
+                     "time": clock(next((cell for cell in cells if _HOUR.fullmatch(cell)), "")),
                      "note": "; ".join(cell for cell in cells[1:] if cell and not _HOUR.fullmatch(cell)
                                        and cell.split()[0] not in ("Agenda", "Minutes", "Video", "Audio", "Español")),
                      "agenda": of("agenda", ".pdf"), "minutes": minutes,

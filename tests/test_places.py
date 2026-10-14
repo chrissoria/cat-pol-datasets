@@ -230,3 +230,20 @@ def test_the_file_of_facts_the_app_reads_has_the_columns_once_and_each_places_va
     assert top["places"]["00"][at("parent_id")] is None and top["places"]["06"][at("population")] == 39431263
     state = json.load(gzip.open(tmp_path / "index" / "CA.json.gz", "rt"))
     assert set(state["places"]) == {"06073"} and state["places"]["06073"][at("population")] == 3298799  # a legislature's districts are left out
+
+
+def test_the_surveys_table_of_origin_and_race_makes_five_shares_that_add_to_the_whole(tmp_path):
+    names = ["GEO_ID"] + [f"B03002_{kind}{n:03d}" for n in range(1, 22) for kind in ("E", "M")]
+    def row(geo, **counts):
+        cells = {f"B03002_E{n:03d}": count for n, count in ((int(name[1:]), count) for name, count in counts.items())}
+        return "|".join([geo] + [str(cells.get(name, 0)) for name in names[1:]])
+    # 1,000 people: 400 White, 100 Black, 10 American Indian, 150 Asian, 5 Pacific Islander, 5 of some other race,
+    # 30 of two or more, none of them Hispanic or Latino; and 300 Hispanic or Latino of any race.
+    county = row("0500000US06073", e1=1000, e2=700, e3=400, e4=100, e5=10, e6=150, e7=5, e8=5, e9=30, e12=300)
+    path = tmp_path / "race.dat"
+    path.write_text("\n".join(["|".join(names), county, row("0400000US72", e1=0), row("1400000US06073000100", e1=50, e3=50)]) + "\n")
+    shares = places.survey_race(path)
+    assert set(shares) == {"06073"}  # a place with nobody counted has no shares, and a tract is not a place kept here
+    assert shares["06073"] == {"white_share": 0.4, "black_share": 0.1, "asian_share": 0.15, "hispanic_share": 0.3, "other_race_share": 0.05}
+    assert abs(sum(shares["06073"].values()) - 1) < 0.001 and set(shares["06073"]) == set(places.RACE_SHARES)
+    assert set(places.RACE_SHARES) <= set(places.PLACE_COLUMNS) and "race_years" in places.INDEX_COLUMNS
