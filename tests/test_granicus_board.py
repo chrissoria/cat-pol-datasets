@@ -425,7 +425,7 @@ def test_a_run_stops_where_the_host_answers_with_a_bot_check(monkeypatch, tmp_pa
 
 
 def test_every_county_has_what_the_reader_needs_and_a_dataset_of_its_own():
-    assert set(board.BOARDS) == {"glenn-county", "butte-county", "marin-county"}
+    assert set(board.BOARDS) == {"glenn-county", "butte-county", "marin-county", "imperial-county"}
     # Butte's record here is the one it kept before CivicClerk: the earlier part of its tables among the county boards.
     assert board.repo_of("butte-county") == "chrissoria/butte-county-earlier-board" and board.repo_of("marin-county") == "chrissoria/marin-county-board"
     for key, county in board.BOARDS.items():

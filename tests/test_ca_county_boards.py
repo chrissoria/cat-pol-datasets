@@ -216,3 +216,23 @@ def test_a_county_whose_tables_are_not_kept_here_is_built_from_those_published(m
         assert "sd-county has no tables here" in str(e)
     else:
         raise AssertionError("built San Diego from nothing")
+
+
+def test_only_the_boards_own_meetings_are_kept_where_a_system_holds_every_body():
+    own = {"meetings": pd.DataFrame({"meeting_id": [1, 2], "body": ["Board of Supervisors", "Planning Commission"]}),
+           "agenda_items": pd.DataFrame({"meeting_id": [1, 2], "matter_id": [10, 20]}),
+           "votes": pd.DataFrame({"meeting_id": [1, 2], "member": ["A", "B"]}),
+           "items": pd.DataFrame({"matter_id": [10, 20]}), "members": pd.DataFrame({"name": ["A"]})}
+    kept = boards.the_board(own, r"^Board of Supervisors$")
+    assert kept["meetings"]["meeting_id"].tolist() == [1] and kept["votes"]["member"].tolist() == ["A"]
+    assert kept["items"]["matter_id"].tolist() == [10] and kept["members"] is own["members"]
+
+
+def test_a_countys_votes_can_be_held_back_and_its_agendas_kept():
+    own = {"votes": pd.DataFrame({"member": ["A"], "vote": ["AYE"]}), "members": pd.DataFrame({"name": ["A"]}),
+           "agenda_items": pd.DataFrame({"title": ["An ordinance"], "ayes": [5], "votes_read": [True], "outcome": ["carried 5-0"]}),
+           "items": pd.DataFrame({"title": ["An ordinance"], "ayes": [5]}), "meetings": pd.DataFrame({"meeting_id": [1]})}
+    held = boards.without_votes(own)
+    assert held["votes"].empty and held["members"].empty and list(held["votes"].columns) == ["member", "vote"]
+    assert held["agenda_items"]["title"].tolist() == ["An ordinance"] and held["agenda_items"][["ayes", "votes_read", "outcome"]].isna().all().all()
+    assert held["items"]["ayes"].isna().all() and held["meetings"] is own["meetings"]

@@ -105,6 +105,11 @@ CITIES = {
     "tehama-county": {"client": "tehamacounty", "name": "Tehama", "owner": "County", "council": ["Board of Supervisors"]},
     "lassen-county": {"client": "lassen", "name": "Lassen", "owner": "County",
                       "council": ["Board of Supervisors", "Board of Supervisors Special Meeting"]},
+    "solano-county": {"client": "solano", "name": "Solano", "owner": "County", "council": ["Board of Supervisors"],
+                      "note": "The clerk entered a vote by member for a few dozen items only; for the rest\n  the minutes give a "
+                              "count and name nobody."},
+    "monterey-county": {"client": "monterey", "name": "Monterey", "owner": "County", "council": ["Board of Supervisors"],
+                        "note": "The clerk enters a vote by member for some years only, most of all 2020 to\n  2022."},
 }
 # The source does not say which district a member sits for. These are typed in, by the name the source gives: those now
 # serving from each city's own pages, the rest from Wikipedia and what is commonly recorded of each council. A member

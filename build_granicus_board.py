@@ -79,6 +79,9 @@ DESCRIPTION = 4000  # the most of what the minutes say under a line that is kept
 #   end          where the agenda stops and the notes printed at the foot of every page begin
 #   skip         rows of the listing that are not meetings
 BOARDS = {
+    # Imperial publishes agendas and video here and no minutes: its meetings are listed, with nothing more read.
+    "imperial-county": {"host": "imperial.granicus.com", "view": 2, "name": "Imperial", "board": r"^Board of Supervisors",
+                        "skip": r"^(?!Board of Supervisors)", "numbers": [r"\d+\.", r"[a-z]{1,2}\."]},
     "glenn-county": {"host": "glenncounty.granicus.com", "view": 9, "name": "Glenn", "board": r"Board of Supervisors|^Special Meeting$",
                      "numbers": [r"\d+\.", r"[a-z]{1,2}\."], "top_motions": True, "skip": r"^Technical Testing$"},
     # Butte's minutes are a web page only from June 2021 to May 2024: before that they are PDFs, which are not read,
@@ -177,7 +180,7 @@ def time_of(text):
 
 
 def link_of(row, viewer):
-    found = re.search(rf'href="([^"]*{viewer}\.php[^"]*)"', row)
+    found = re.search(rf'(?:href|value)="([^"]*{viewer}\.php[^"]*)"', row)  # a link, or a choice in a menu of documents (Imperial)
     return ("https:" if found[1].startswith("//") else "") + html.unescape(found[1]) if found else ""
 
 

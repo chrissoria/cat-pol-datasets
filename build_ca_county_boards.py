@@ -200,12 +200,26 @@ COUNTIES = {
                                   "count (1,110 of 1,163). Uneven: the County lists no minutes here for 2020 and 2021 and few before "
                                   "2022, and 35 sets, 14 of them from 2026, are scans that are not read. The minutes print a count "
                                   "and no outcome, so `result` is empty."},
-    "amador-county": {**PDF, "system": "Granicus, draft minutes as PDF", "builder": "build_amador_board.py",
-                      "note": "From September 2023, and from draft minutes: the draft attached to the agenda of the meeting that "
-                              "approved them, the approved copy being on a site that refuses readers. Two motions in three say only "
-                              "\"carried unanimously\": there an aye is given to each supervisor the roll call has present, which "
-                              "is wrong for one who stepped out without the minutes saying so (`read_from` says which votes these "
-                              "are). Regular items have no agenda number."},
+    "amador-county": {**PDF, "system": "Granicus, draft minutes as PDF", "builder": "build_amador_board.py", "read_from": "",
+                      "hold_votes": True,
+                      "note": "Agendas and what was done, from September 2023, read from draft minutes: the draft attached to the "
+                              "agenda of the meeting that approved them, the approved copy being on a site that refuses readers. "
+                              "Votes are held back for now: two motions in three say only \"carried unanimously\". Only "
+                              "meetings whose draft minutes were found have their agenda lines here. Regular items have no "
+                              "agenda number."},
+    "riverside-county": {**IQM2, "read_from": "", "bodies": r"^Board of Supervisors$", "hold_votes": True,
+                         "note": "Agendas and meetings only, from 2019: the County's IQM2 portal shows no vote by member, and its "
+                                 "Legistar holds only practice entries."},
+    "solano-county": {**LEGISTAR, "bodies": r"^Board of Supervisors$",
+                      "note": "Thin: the clerk entered a vote by member for 38 items only (2011, 2013, and a few in 2025 and 2026). "
+                              "For the rest the minutes give a count (\"5-0\", \"ALL AYES\") and name nobody. Only the Board's own "
+                              "meetings are here, not the other bodies its Legistar holds."},
+    "monterey-county": {**LEGISTAR, "bodies": r"^Board of Supervisors$",
+                        "note": "The clerk enters a vote by member for some years only: few before 2017, most items of 2020 to "
+                                "2022, few in 2023 and 2024, more since 2025. Its Legistar holds every body of the County's; "
+                                "only the Board's own meetings are here."},
+    "imperial-county": {**GRANICUS, "read_from": "",
+                        "note": "Meetings only, with a link to each agenda and recording: the County publishes no minutes there."},
     "lassen-county": {**LEGISTAR}, "del-norte-county": {**CIVICCLERK}, "colusa-county": {**CIVICCLERK},
     "plumas-county": {**CIVICCLERK}, "mariposa-county": {**CIVICCLERK}, "modoc-county": {**CIVICCLERK}, "alpine-county": {**CIVICCLERK},
     "marin-county": {**GRANICUS, "note": TYPED.format(share="about 28%", years="")},
@@ -394,6 +408,40 @@ def tables_in(folder):
     return all((Path(folder) / f"{name}.parquet").exists() for name in TABLES)
 
 
+def the_board(own, bodies):
+    """A reader's tables with only the meetings of the Board itself, where its system holds every body of the county's
+    (Monterey's and Solano's Legistar): the meetings whose body fits `bodies`, the lines and votes of those, and the items
+    on those lines."""
+    meetings = own["meetings"][own["meetings"]["body"].fillna("").str.contains(bodies, regex=True)]
+    kept = set(meetings["meeting_id"].astype(str))
+    on = lambda table: table[table["meeting_id"].astype(str).isin(kept)]
+    agenda = on(own["agenda_items"])
+    items = own["items"][own["items"]["matter_id"].astype(str).isin(set(agenda["matter_id"].dropna().astype(str)))]
+    return {**own, "meetings": meetings, "agenda_items": agenda, "votes": on(own["votes"]), "items": items}
+
+
+# What is emptied where a county's votes are held back (`"hold_votes": True`): every table keeps its columns, and nothing
+# in it says how a supervisor voted or how many voted which way.
+VOTE_WORDS = {"agenda_items": ["ayes", "noes", "not_voting", "votes_read", "problem", "how", "established", "voted_with",
+                               "motion_log", "outcome", "motions_read"],
+              "items": ["ayes", "noes", "votes_read"]}
+
+
+def without_votes(own):
+    """A reader's tables with its votes held back: no rows in `votes` or `members`, and the counts and the words about
+    votes emptied in the other tables. Agendas, items and what was done with them stay."""
+    out = {**own, "votes": own["votes"].iloc[:0], "members": own["members"].iloc[:0]}
+    for name, columns in VOTE_WORDS.items():
+        table = own[name].copy()
+        for column in [column for column in columns if column in table.columns]:
+            kind = table[column].dtype
+            empty = ("boolean" if pd.api.types.is_bool_dtype(kind) else "Int64" if pd.api.types.is_integer_dtype(kind)
+                     else "Float64" if pd.api.types.is_float_dtype(kind) else object)
+            table[column] = pd.Series([pd.NA] * len(table), index=table.index, dtype=empty)
+        out[name] = table
+    return out
+
+
 def build_county(key, out_dir, listed=None, folder=None, part=""):
     """One county's files, from the folder its reader wrote (its usual one, unless told another: `part` says if that
     other is the county's earlier record). Returns its line for the counties table."""
@@ -411,6 +459,11 @@ def build_county(key, out_dir, listed=None, folder=None, part=""):
     own = {name: pd.read_parquet(folder / f"{name}.parquet") for name in TABLES}
     if facts["earlier"]:
         own = with_earlier(own, {name: pd.read_parquet(folders[EARLIER] / f"{name}.parquet") for name in TABLES}, facts["earlier"])
+    if COUNTIES[key].get("bodies"):
+        own = the_board(own, COUNTIES[key]["bodies"])
+    held_back = COUNTIES[key].get("hold_votes", False)
+    if held_back:
+        own = without_votes(own)
     tables = {}
     for name in TABLES:
         table = own[name].drop(columns=[column for column in facts["drop"].get(name, []) if column in own[name].columns])
@@ -420,7 +473,10 @@ def build_county(key, out_dir, listed=None, folder=None, part=""):
         write(tables[name], out_dir / "data" / name / f"{facts['slug']}.parquet", name)
         for which, written in folders.items():
             kept = raw_folder(facts, out_dir, which) / f"{name}.parquet"
-            if facts["raw"] and kept.resolve() != (written / f"{name}.parquet").resolve():
+            if held_back:  # the reader's own tables are not kept as they are: they hold the votes
+                kept.parent.mkdir(parents=True, exist_ok=True)
+                own[name].to_parquet(kept, index=False)
+            elif facts["raw"] and kept.resolve() != (written / f"{name}.parquet").resolve():
                 kept.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(written / f"{name}.parquet", kept)
     read_on = datetime.fromtimestamp((folder / "votes.parquet").stat().st_mtime, timezone.utc).strftime("%Y-%m-%d")

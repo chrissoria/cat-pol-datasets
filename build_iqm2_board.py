@@ -85,6 +85,7 @@ BOARDS = {
     "san-joaquin-county": {"host": "sanjoaquincountyca.iqm2.com", "name": "San Joaquin", "board": ["Board of Supervisors"],
                            "first": 2003},
     "sutter-county": {"host": "suttercountyca.iqm2.com", "name": "Sutter", "board": ["Board of Supervisors"], "first": 2000},
+    "riverside-county": {"host": "riversidecountyca.iqm2.com", "name": "Riverside", "board": ["Board of Supervisors"], "first": 2019},
     "santa-cruz-county": {"host": "santacruzcountyca.iqm2.com", "name": "Santa Cruz", "board": ["Board of Supervisors"],
                           "first": 1998,
                           "ends": "The County moved to another system (PrimeGov) in January 2025, and its record here ends there."},
