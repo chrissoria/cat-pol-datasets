@@ -11,7 +11,7 @@ import bodies
 import build_ca_county_boards as boards
 import council_tables
 
-FACTS = {"key": "fresno-county", "county": "Fresno", "county_fips": "06019", "read_from": boards.SYSTEM}
+FACTS = {"key": "fresno-county", "name": "Fresno", "fips": "06019", "kind": boards.COUNTY, "read_from": boards.SYSTEM}
 
 
 def test_every_county_named_is_a_body_with_a_board_and_a_place():
@@ -19,7 +19,7 @@ def test_every_county_named_is_a_body_with_a_board_and_a_place():
     seen = set()
     for key in boards.COUNTIES:
         facts = boards.facts_of(key, listed)
-        assert facts["county_fips"].startswith("06") and len(facts["county_fips"]) == 5 and facts["body"] == "Board of Supervisors"
+        assert facts["fips"].startswith("06") and len(facts["fips"]) == 5 and facts["body"] == "Board of Supervisors"
         assert facts["slug"] not in seen and facts["system"] and facts["builder"].endswith(".py") and facts["site"].startswith("https://")
         seen.add(facts["slug"])
     assert boards.facts_of("sd-county", listed)["slug"] == "san-diego" and boards.facts_of("sd-county", listed)["raw"] is False
@@ -111,9 +111,9 @@ def test_a_countys_line_is_counted_from_its_tables_and_the_card_lists_it(tmp_pat
     assert (row["votes"], row["meetings"], row["serving"], row["kept_current"], row["read_from"]) == (2, 3, 2, "daily run", "system")
     assert boards.county_row(boards.facts_of("sutter-county"), tables, "2026-10-13")["kept_current"] == "by hand"
     counties = boards.counties_table([row])
-    assert list(counties.columns) == boards.COUNTY_COLUMNS
+    assert list(counties.columns) == boards.COUNTY.columns
     # One county built again replaces its own line and leaves the others.
-    held = pd.DataFrame([{**row, "votes": 1}, {**row, "county": "Lake", "county_fips": "06033", "votes": 9}], columns=boards.COUNTY_COLUMNS)
+    held = pd.DataFrame([{**row, "votes": 1}, {**row, "county": "Lake", "county_fips": "06033", "votes": 9}], columns=boards.COUNTY.columns)
     again = boards.counties_table([row], held)
     assert again[["county", "votes"]].values.tolist() == [["Lake", 9], ["Fresno", 2]]
     text = boards.card(again)
@@ -128,7 +128,7 @@ def test_a_readers_tables_for_a_county_board_go_to_the_one_dataset(monkeypatch, 
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda repo, file, **more: asked.append((repo, file)) or "nowhere.parquet")
     assert council_tables.published("chrissoria/san-mateo-county-board", "votes") is None  # nothing there to read, and no error
     council_tables.published("chrissoria/oakland-council", "votes")
-    assert asked == [(boards.REPO, "raw/san-mateo/votes.parquet"), ("chrissoria/oakland-council", "data/votes.parquet")]
+    assert asked == [(boards.REPO, "raw/san-mateo/votes.parquet"), ("chrissoria/ca-city-councils", "raw/oakland/votes.parquet")]
     sent = []
     monkeypatch.setattr(boards, "publish_county", lambda key, folder, part="": sent.append((key, folder, part)) or True)
     assert council_tables.publish("chrissoria/lake-county-board", tmp_path, "a card of its own", True, "Update") is True
@@ -159,7 +159,7 @@ def test_the_daily_run_reads_the_counties_longest_unread_until_its_time_is_up(mo
     # Every county was read on the 12th but two, read on the 10th and the 11th: those two come first, oldest first.
     held = pd.DataFrame({"county_fips": [listed[key] for key in daily],
                          "read_on": ["2026-10-10" if key == "lake-county" else "2026-10-11" if key == "napa-county" else "2026-10-12" for key in daily]})
-    monkeypatch.setattr(boards, "held_counties", lambda out_dir: held)
+    monkeypatch.setattr(boards, "held_counties", lambda out_dir, kind=None: held)
     monkeypatch.setattr(boards.bills, "hf_write_problem", lambda repo=None: None)
     monkeypatch.setattr(boards.bills, "SCRIPT_DIR", tmp_path)  # no tables of San Diego's written today
     called = []
@@ -204,7 +204,7 @@ def test_a_county_whose_tables_are_not_kept_here_is_built_from_those_published(m
 
     import huggingface_hub
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
-    monkeypatch.setattr(boards, "held_counties", lambda out_dir: pd.DataFrame({"county_fips": [facts["county_fips"]], "read_on": ["2026-10-12"]}))
+    monkeypatch.setattr(boards, "held_counties", lambda out_dir, kind=None: pd.DataFrame({"county_fips": [facts["fips"]], "read_on": ["2026-10-12"]}))
     row = boards.build_county("alpine-county", tmp_path, folder=tmp_path / "nowhere")
     assert sorted(asked) == sorted(f"raw/alpine/{name}.parquet" for name in boards.TABLES)
     assert (row["county"], row["votes"], row["read_on"]) == ("Alpine", 1, "2026-10-12")  # read when the published table says, not today
@@ -236,3 +236,20 @@ def test_a_countys_votes_can_be_held_back_and_its_agendas_kept():
     assert held["votes"].empty and held["members"].empty and list(held["votes"].columns) == ["member", "vote"]
     assert held["agenda_items"]["title"].tolist() == ["An ordinance"] and held["agenda_items"][["ayes", "votes_read", "outcome"]].isna().all().all()
     assert held["items"]["ayes"].isna().all() and held["meetings"] is own["meetings"]
+
+
+def test_a_city_councils_tables_go_to_the_one_dataset_of_city_councils_and_say_city(monkeypatch, tmp_path):
+    import build_ca_city_councils as cities
+    assert council_tables.council_of("chrissoria/san-diego-council") == "sd-council"
+    assert council_tables.council_of("chrissoria/oakland-council") == "oakland-council"
+    assert council_tables.council_of("chrissoria/fresno-county-board") is None and council_tables.board_of("chrissoria/oakland-council") is None
+    assert [cities.slug_of(key) for key in cities.CITIES] == ["san-diego", "oakland", "long-beach", "fresno", "salinas"]
+    sent = []
+    monkeypatch.setattr(boards, "publish_county", lambda key, folder, out_dir=None, part="", kind=None: sent.append((key, kind.repo)) or True)
+    assert council_tables.publish("chrissoria/salinas-council", tmp_path, "a card", True, "Update") is True
+    assert sent == [("salinas-council", "chrissoria/ca-city-councils")]
+    plain = pd.DataFrame({column: ["x"] for column in council_tables.COLUMNS["votes"]})
+    facts = {**boards.facts_of("oakland-council", kind=cities.CITY), "read_from": boards.SYSTEM}
+    one = boards.one_shape("votes", plain.assign(read_from=boards.SYSTEM, vote_kind="AYE"), facts)
+    assert list(one.columns)[:2] == ["city", "city_fips"] and one["city"].tolist() == ["Oakland"] and one["city_fips"].tolist() == ["0653000"]
+    assert cities.CITY.columns[:2] == ["city", "city_fips"] and boards.COUNTY.columns[:2] == ["county", "county_fips"]

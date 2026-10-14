@@ -42,6 +42,7 @@ import logging
 import shutil
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,7 +67,8 @@ TEXT = "minutes text"          # read from the text of a PDF of the minutes
 CODE = "margin code"           # read from a row of digits in the margin of the minutes, by the key the minutes print
 COUNT = "count"                # the minutes give a count (or say "majority") and name who was not an aye: the ayes are the rest of the board that day
 UNANIMOUS = "unanimous"        # the minutes say "unanimous" and name nobody: an aye for everyone on the board and in the room
-WAYS = (SYSTEM, PAGE, TEXT, CODE, COUNT, UNANIMOUS)
+DISTRICTS = "district code"    # the clerk's results give the vote by seat ("12356789-yea; 4-nay"), and the agenda who held each
+WAYS = (SYSTEM, PAGE, TEXT, CODE, DISTRICTS, COUNT, UNANIMOUS)
 EARLIER = council_tables.EARLIER
 
 # The columns every file of a table has after the shared ones: what most of the readers add. A reader that does not
@@ -244,24 +246,55 @@ COUNTIES = {
 CIVICCLERK_NOTE = "Votes begin the month the clerk began entering them in this system; earlier years are in PDF minutes, not read."
 
 
+@dataclass(frozen=True)
+class Collection:
+    """One dataset of local bodies made this way: the county boards here, the city councils in build_ca_city_councils.py.
+    The two are kept apart, and say which they are in the names of their columns: `county` and `county_fips` in one,
+    `city` and `city_fips` in the other."""
+    repo: str
+    out_dir: Path
+    card_file: Path
+    entries: dict           # {body id in bodies.json: how its record is kept and read}
+    place: str              # "county": the name of the column that says whose a row is
+    places: str             # "counties": the name of the table of them, data/<places>.parquet
+    strip: tuple            # what is taken off a body's name to leave the place's ("Fresno County Board of Supervisors")
+    note: str = ""          # what a CivicClerk entry says if it says nothing itself
+
+    @property
+    def fips(self):
+        return f"{self.place}_fips"
+
+    @property
+    def columns(self):
+        return [self.place, self.fips, *SUMMARY_COLUMNS]
+
+
+COUNTY = Collection(REPO, OUT_DIR, CARD_FILE, COUNTIES, "county", "counties",
+                    (" County Board of Supervisors", " Board of Supervisors"), CIVICCLERK_NOTE)
+
+
 def today():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def facts_of(key, listed=None):
+def facts_of(key, listed=None, kind=None):
     """What is known of one county before its tables are read: its names, its code, where its tables are and how they were read."""
+    kind = kind or COUNTY
     body = (listed or {body["id"]: body for body in bodies.read_bodies()})[key]
-    county = COUNTIES[key]
-    name = body["name"].replace(" County Board of Supervisors", "").replace(" Board of Supervisors", "")  # San Francisco's has no "County"
+    county = kind.entries[key]
+    name = body["name"]
+    for words in kind.strip:  # San Francisco's board has no "County" in its name
+        name = name.replace(words, "")
     slug = name.lower().replace(" ", "-")
     return {
-        "key": key, "county": name, "slug": slug, "county_fips": body["place"], "body": body["body"],
+        "key": key, "name": name, "slug": slug, "fips": body["place"], "body": body["body"], "kind": kind,
         "system": county["system"], "builder": county["builder"], "site": county.get("site") or body.get("url", ""),
         "folder": county["folder"].format(key=key), "raw": county.get("raw", True), "daily": county.get("daily", False),
         "drop": county.get("drop", {}), "read_from": county["read_from"],
         "earlier": {**county["earlier"], "folder": county["earlier"]["folder"].format(key=key)} if county.get("earlier") else None,
         "room": ROOM.format(fips=body["place"]) if body.get("world") == "chamber" else "",
-        "note": county.get("note") or (CIVICCLERK_NOTE if county["system"] == "CivicClerk" else ""),
+        "note": county.get("note") or (kind.note if county["system"] == "CivicClerk" else ""),
+        "bodies": county.get("bodies", ""), "hold_votes": county.get("hold_votes", False), "extra": county.get("extra", []),
     }
 
 
@@ -335,7 +368,8 @@ def one_shape(name, table, facts):
     """A reader's table with the columns every county's has, in order and of one kind each; what only that reader has is left to raw/."""
     wanted = council_tables.COLUMNS[name] + ADDED[name]
     out = pd.DataFrame(index=table.index)
-    out["county"], out["county_fips"] = facts["county"], facts["county_fips"]
+    kind = facts["kind"]
+    out[kind.place], out[kind.fips] = facts["name"], facts["fips"]
     for column in wanted:
         values = table[column] if column in table.columns else pd.Series(pd.NA, index=table.index, dtype=object)
         if column in WHOLE:
@@ -350,18 +384,19 @@ def one_shape(name, table, facts):
     return out.reset_index(drop=True)
 
 
-def schema_of(name):
+def schema_of(name, collection=None):
     import pyarrow as pa
+    collection = collection or COUNTY
     kind = lambda column: pa.int64() if column in WHOLE else pa.bool_() if column in YES_NO else pa.string()
-    return pa.schema([("county", pa.string()), ("county_fips", pa.string())]
+    return pa.schema([(collection.place, pa.string()), (collection.fips, pa.string())]
                      + [(column, kind(column)) for column in council_tables.COLUMNS[name] + ADDED[name]])
 
 
-def write(table, path, name=None):
+def write(table, path, name=None, kind=None):
     import pyarrow as pa
     import pyarrow.parquet as pq
     path.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pandas(table, schema=schema_of(name), preserve_index=False) if name else
+    pq.write_table(pa.Table.from_pandas(table, schema=schema_of(name, kind), preserve_index=False) if name else
                    pa.Table.from_pandas(table, preserve_index=False), path, compression="zstd")
 
 
@@ -371,8 +406,9 @@ def county_row(facts, tables, read_on):
     soon = (datetime.now(timezone.utc) + pd.Timedelta(days=366)).strftime("%Y-%m-%d")  # a stray date a century on is not the end
     held = meetings[(meetings["items"] > 0) & (meetings["date"] <= soon) & (meetings["date"] != "")]
     ways = [way for way in WAYS if (votes["read_from"] == way).any()] or [facts["read_from"]]
+    kind = facts["kind"]
     return {
-        "county": facts["county"], "county_fips": facts["county_fips"], "body": facts["body"], "system": facts["system"],
+        kind.place: facts["name"], kind.fips: facts["fips"], "body": facts["body"], "system": facts["system"],
         "read_from": ", ".join(ways), "site": facts["site"],
         "first_meeting": held["date"].min() if len(held) else "", "last_meeting": held["date"].max() if len(held) else "",
         "first_vote": votes["date"].min() if len(votes) else "", "last_vote": votes["date"].max() if len(votes) else "",
@@ -383,8 +419,8 @@ def county_row(facts, tables, read_on):
     }
 
 
-COUNTY_COLUMNS = ["county", "county_fips", "body", "system", "read_from", "site", "first_meeting", "last_meeting", "first_vote",
-                  "last_vote", *TABLES, "serving", "kept_current", "read_on", "room", "builder", "note"]
+SUMMARY_COLUMNS = ["body", "system", "read_from", "site", "first_meeting", "last_meeting", "first_vote",
+                   "last_vote", *TABLES, "serving", "kept_current", "read_on", "room", "builder", "note"]
 
 
 def raw_folder(facts, out_dir, part=""):
@@ -395,11 +431,11 @@ def raw_folder(facts, out_dir, part=""):
 def fetched(facts, out_dir, part=""):
     """A county's own tables as published under raw/, put where this run keeps them. The folder they are in."""
     if not facts["raw"]:
-        raise FileNotFoundError(f"{facts['key']} has no tables here, and its own are not kept in {REPO}")
+        raise FileNotFoundError(f"{facts['key']} has no tables here, and its own are not kept in {facts['kind'].repo}")
     from huggingface_hub import hf_hub_download
     folder = raw_folder(facts, out_dir, part)
     for name in TABLES:
-        hf_hub_download(REPO, str((folder / f"{name}.parquet").relative_to(out_dir)), repo_type="dataset", token=bills.HF_TOKEN,
+        hf_hub_download(facts["kind"].repo, str((folder / f"{name}.parquet").relative_to(out_dir)), repo_type="dataset", token=bills.HF_TOKEN,
                         local_dir=out_dir)
     return folder
 
@@ -442,10 +478,11 @@ def without_votes(own):
     return out
 
 
-def build_county(key, out_dir, listed=None, folder=None, part=""):
+def build_county(key, out_dir, listed=None, folder=None, part="", kind=None):
     """One county's files, from the folder its reader wrote (its usual one, unless told another: `part` says if that
     other is the county's earlier record). Returns its line for the counties table."""
-    facts = facts_of(key, listed)
+    kind = kind or COUNTY
+    facts = facts_of(key, listed, kind)
     folders = {"": bills.SCRIPT_DIR / facts["folder"]}
     if facts["earlier"]:
         folders[EARLIER] = bills.SCRIPT_DIR / facts["earlier"]["folder"]
@@ -459,9 +496,9 @@ def build_county(key, out_dir, listed=None, folder=None, part=""):
     own = {name: pd.read_parquet(folder / f"{name}.parquet") for name in TABLES}
     if facts["earlier"]:
         own = with_earlier(own, {name: pd.read_parquet(folders[EARLIER] / f"{name}.parquet") for name in TABLES}, facts["earlier"])
-    if COUNTIES[key].get("bodies"):
-        own = the_board(own, COUNTIES[key]["bodies"])
-    held_back = COUNTIES[key].get("hold_votes", False)
+    if facts["bodies"]:
+        own = the_board(own, facts["bodies"])
+    held_back = facts["hold_votes"]
     if held_back:
         own = without_votes(own)
     tables = {}
@@ -470,7 +507,7 @@ def build_county(key, out_dir, listed=None, folder=None, part=""):
         if name == "votes":
             table = table.assign(read_from=read_from(facts, table, own["meetings"]), vote_kind=table["vote"].fillna("").map(vote_kind))
         tables[name] = one_shape(name, table, facts)
-        write(tables[name], out_dir / "data" / name / f"{facts['slug']}.parquet", name)
+        write(tables[name], out_dir / "data" / name / f"{facts['slug']}.parquet", name, kind)
         for which, written in folders.items():
             kept = raw_folder(facts, out_dir, which) / f"{name}.parquet"
             if held_back:  # the reader's own tables are not kept as they are: they hold the votes
@@ -479,66 +516,77 @@ def build_county(key, out_dir, listed=None, folder=None, part=""):
             elif facts["raw"] and kept.resolve() != (written / f"{name}.parquet").resolve():
                 kept.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(written / f"{name}.parquet", kept)
+    for name in facts["extra"]:  # a table only its reader has and needs on its next run (San Diego's rosters)
+        if (folder / f"{name}.parquet").exists():
+            kept = raw_folder(facts, out_dir) / f"{name}.parquet"
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            if kept.resolve() != (folder / f"{name}.parquet").resolve():
+                shutil.copyfile(folder / f"{name}.parquet", kept)
     read_on = datetime.fromtimestamp((folder / "votes.parquet").stat().st_mtime, timezone.utc).strftime("%Y-%m-%d")
     if not here:  # fetched today, read whenever the published table says
-        counties = held_counties(out_dir)
-        before = counties.loc[counties["county_fips"] == facts["county_fips"], "read_on"] if counties is not None else []
+        counties = held_counties(out_dir, kind)
+        before = counties.loc[counties[kind.fips] == facts["fips"], "read_on"] if counties is not None else []
         read_on = before.iloc[0] if len(before) else read_on
     return county_row(facts, tables, read_on)
 
 
-def counties_table(rows, held=None):
+def counties_table(rows, held=None, kind=None):
     """The counties table: the lines just made, over those held for the counties not built this time."""
-    table = pd.DataFrame(rows, columns=COUNTY_COLUMNS)
+    kind = kind or COUNTY
+    table = pd.DataFrame(rows, columns=kind.columns)
     if held is not None and len(held):
-        table = pd.concat([held[~held["county_fips"].isin(table["county_fips"])], table], ignore_index=True)
+        table = pd.concat([held[~held[kind.fips].isin(table[kind.fips])], table], ignore_index=True)
     return table.sort_values("votes", ascending=False).reset_index(drop=True)
 
 
-def card(counties):
+def card(counties, kind=None):
     """The dataset card, with the counties and the counts written in."""
-    listed = ["| County | Read from | Votes | Votes from | to | Room |", "|---|---|---|---|---|---|"]
-    for row in counties.sort_values("county").itertuples():
+    kind = kind or COUNTY
+    listed = [f"| {kind.place.title()} | Read from | Votes | Votes from | to | Room |", "|---|---|---|---|---|---|"]
+    for row in counties.sort_values(kind.place).itertuples():
         room = f"[open]({row.room})" if row.room else ""
-        listed.append(f"| {row.county} | {row.system} | {row.votes:,} | {row.first_vote} | {row.last_vote} | {room} |")
+        listed.append(f"| {getattr(row, kind.place)} | {row.system} | {row.votes:,} | {row.first_vote} | {row.last_vote} | {room} |")
     said = {}  # counties that share a note are named together
-    for row in counties.sort_values("county").itertuples():
+    for row in counties.sort_values(kind.place).itertuples():
         if row.note:
-            said.setdefault(row.note, []).append(row.county)
+            said.setdefault(row.note, []).append(getattr(row, kind.place))
     notes = [f"- **{', '.join(names)}.** {note}" for note, names in sorted(said.items(), key=lambda pair: pair[1])]
     facts = {
-        "repo": REPO, "n_counties": len(counties), "county_list": "\n".join(listed), "county_notes": "\n".join(notes),
+        "repo": kind.repo, f"n_{kind.places}": len(counties), f"{kind.place}_list": "\n".join(listed),
+        f"{kind.place}_notes": "\n".join(notes),
         "first_vote": counties.loc[counties["first_vote"] != "", "first_vote"].min(), "last_vote": counties["last_vote"].max(),
         **{f"n_{name}": f"{int(counties[name].sum()):,}" for name in TABLES},
     }
-    text = CARD_FILE.read_text(encoding="utf-8")
+    text = kind.card_file.read_text(encoding="utf-8")
     for fact, value in facts.items():
         text = text.replace("{" + fact + "}", str(value))
     return text
 
 
-def held_counties(out_dir):
+def held_counties(out_dir, kind=None):
     """The counties table to add a county's line to: as published, or failing that as last written here."""
+    kind = kind or COUNTY
     try:
         from huggingface_hub import hf_hub_download
-        return pd.read_parquet(hf_hub_download(REPO, "data/counties.parquet", repo_type="dataset", token=bills.HF_TOKEN))
+        return pd.read_parquet(hf_hub_download(kind.repo, f"data/{kind.places}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
     except Exception:
-        path = Path(out_dir) / "data" / "counties.parquet"
+        path = Path(out_dir) / "data" / f"{kind.places}.parquet"
         return pd.read_parquet(path) if path.exists() else None
 
 
-def publish_county(key, folder, out_dir=OUT_DIR, part=""):
+def publish_county(key, folder, out_dir=None, part="", kind=None):
     """Publish one county from the tables its reader has just written in `folder`. Every reader of a county board ends here.
     `part` is EARLIER when the reader is that of the record the county kept before its present one."""
-    if key not in COUNTIES:
-        raise ValueError(f"{key} is not among the counties of {REPO}: add it to COUNTIES in build_ca_county_boards.py")
-    problem = bills.hf_write_problem(REPO)
+    kind = kind or COUNTY
+    if key not in kind.entries:
+        raise ValueError(f"{key} is not among the {kind.places} of {kind.repo}: add it to its list of entries")
+    problem = bills.hf_write_problem(kind.repo)
     if problem:
         raise PermissionError(problem)
-    out_dir = Path(out_dir)
-    counties = counties_table([build_county(key, out_dir, folder=folder, part=part)], held_counties(out_dir))
-    write(counties, out_dir / "data" / "counties.parquet")
-    return upload(out_dir, [facts_of(key)["slug"]], True, counties)
+    out_dir = Path(out_dir or kind.out_dir)
+    counties = counties_table([build_county(key, out_dir, folder=folder, part=part, kind=kind)], held_counties(out_dir, kind), kind)
+    write(counties, out_dir / "data" / f"{kind.places}.parquet")
+    return upload(out_dir, [facts_of(key, kind=kind)["slug"]], True, counties, kind)
 
 
 def read_some(minutes, out_dir=OUT_DIR):
@@ -552,7 +600,7 @@ def read_some(minutes, out_dir=OUT_DIR):
         return 1
     started, read, failed = time.time(), [], []
     counties = held_counties(out_dir)
-    last = dict(zip(counties["county_fips"], counties["read_on"])) if counties is not None else {}
+    last = dict(zip(counties[COUNTY.fips], counties["read_on"])) if counties is not None else {}
     listed = {body["id"]: body for body in bodies.read_bodies()}
     san_diego = bills.SCRIPT_DIR / COUNTIES["sd-county"]["folder"]
     written = san_diego / "votes.parquet"
@@ -585,59 +633,62 @@ def read_some(minutes, out_dir=OUT_DIR):
     return 1 if failed else 0
 
 
-def upload(out_dir, slugs, with_card, counties):
+def upload(out_dir, slugs, with_card, counties, kind=None):
     """Publish the files of the counties built, the counties table, and the card if asked or if there is none."""
-    problem = bills.hf_write_problem(REPO)
+    kind = kind or COUNTY
+    problem = bills.hf_write_problem(kind.repo)
     if problem:
         log.error(f"Not uploaded: {problem}")
         return False
     from huggingface_hub import CommitOperationAdd, HfApi
     api = HfApi(token=bills.HF_TOKEN)
-    api.create_repo(REPO, repo_type="dataset", exist_ok=True)
-    files = [out_dir / "data" / "counties.parquet"]
+    api.create_repo(kind.repo, repo_type="dataset", exist_ok=True)
+    files = [out_dir / "data" / f"{kind.places}.parquet"]
     for slug in slugs:
         files += [out_dir / "data" / name / f"{slug}.parquet" for name in TABLES]
         files += sorted((out_dir / "raw" / slug).rglob("*.parquet"))
     operations = [CommitOperationAdd(path_in_repo=str(path.relative_to(out_dir)), path_or_fileobj=str(path)) for path in files]
-    if with_card or not api.file_exists(REPO, "README.md", repo_type="dataset"):
-        operations.append(CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=card(counties).encode("utf-8")))
-    api.create_commit(REPO, operations=operations, repo_type="dataset",
-                      commit_message=f"Update {', '.join(slugs) if len(slugs) <= 3 else f'{len(slugs)} counties'}")
+    if with_card or not api.file_exists(kind.repo, "README.md", repo_type="dataset"):
+        operations.append(CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=card(counties, kind).encode("utf-8")))
+    api.create_commit(kind.repo, operations=operations, repo_type="dataset",
+                      commit_message=f"Update {', '.join(slugs) if len(slugs) <= 3 else f'{len(slugs)} {kind.places}'}")
     return True
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description="Put the county boards' tables in one dataset")
-    parser.add_argument("--county", nargs="+", help="the counties to build, by name or body id (default: every one)")
-    parser.add_argument("--out", default=str(OUT_DIR), help="directory to write the dataset's files into")
+def main(argv=None, kind=None):
+    kind = kind or COUNTY
+    parser = argparse.ArgumentParser(description=f"Put the {kind.places}' tables in one dataset, {kind.repo}")
+    parser.add_argument(f"--{kind.place}", dest="county", nargs="+", help=f"the {kind.places} to build, by name or body id (default: every one)")
+    parser.add_argument("--out", default=str(kind.out_dir), help="directory to write the dataset's files into")
     parser.add_argument("--no-upload", action="store_true", help="write the files but do not publish them")
     parser.add_argument("--write-card", action="store_true", help="publish the dataset card too")
-    parser.add_argument("--read", action="store_true", help="the daily run's part: read again the counties longest unread, and publish each")
-    parser.add_argument("--minutes", type=float, default=30, help="with --read, stop starting counties after this many minutes")
+    if kind is COUNTY:
+        parser.add_argument("--read", action="store_true", help="the daily run's part: read again the counties longest unread, and publish each")
+        parser.add_argument("--minutes", type=float, default=30, help="with --read, stop starting counties after this many minutes")
     args = parser.parse_args(argv)
     out_dir = Path(args.out)
-    if args.read:
+    if getattr(args, "read", False):
         return read_some(args.minutes, out_dir)
     listed = {body["id"]: body for body in bodies.read_bodies()}
-    by_slug = {facts_of(key, listed)["slug"]: key for key in COUNTIES}
-    keys = [by_slug.get(name, name) for name in args.county] if args.county else list(COUNTIES)
-    unknown = [key for key in keys if key not in COUNTIES]
+    by_slug = {facts_of(key, listed, kind)["slug"]: key for key in kind.entries}
+    keys = [by_slug.get(name, name) for name in args.county] if args.county else list(kind.entries)
+    unknown = [key for key in keys if key not in kind.entries]
     if unknown:
-        parser.error(f"no such county: {', '.join(unknown)}")
+        parser.error(f"no such {kind.place}: {', '.join(unknown)}")
     rows, failed = [], []
     for key in keys:
         try:
-            rows.append(build_county(key, out_dir, listed))
+            rows.append(build_county(key, out_dir, listed, kind=kind))
         except Exception as e:
             log.error(f"{key} not built: {type(e).__name__}: {e}")
             failed.append(key)
-    path = out_dir / "data" / "counties.parquet"
-    counties = counties_table(rows, pd.read_parquet(path) if args.county and path.exists() else None)
+    path = out_dir / "data" / f"{kind.places}.parquet"
+    counties = counties_table(rows, pd.read_parquet(path) if args.county and path.exists() else None, kind)
     write(counties, path)
-    (out_dir / "README.md").write_text(card(counties), encoding="utf-8")
-    slugs = [facts_of(key, listed)["slug"] for key in keys if key not in failed]
-    pushed = False if args.no_upload or not slugs else upload(out_dir, slugs, args.write_card, counties)
-    log.info(f"RESULT: ca-county-boards counties={len(counties)} built={len(slugs)} failed={len(failed)} "
+    (out_dir / "README.md").write_text(card(counties, kind), encoding="utf-8")
+    slugs = [facts_of(key, listed, kind)["slug"] for key in keys if key not in failed]
+    pushed = False if args.no_upload or not slugs else upload(out_dir, slugs, args.write_card, counties, kind)
+    log.info(f"RESULT: {kind.repo.split('/')[1]} {kind.places}={len(counties)} built={len(slugs)} failed={len(failed)} "
              f"{' '.join(f'{name}={int(counties[name].sum())}' for name in TABLES)} pushed={pushed}")
     return 1 if failed or not (args.no_upload or pushed) else 0
 

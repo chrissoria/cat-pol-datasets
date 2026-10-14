@@ -70,12 +70,12 @@
     "url": "https://sandiego.hylandcloud.com/211agendaonlinecouncil",
     "since": "January 2010",
     "world": "chamber",
-    "chamber": {"repo": "chrissoria/san-diego-council", "folder": "sdcouncil", "members": "members"},
+    "chamber": {"repo": "chrissoria/ca-city-councils", "tables": "raw/san-diego", "file": "world/san-diego/chamber.json.gz", "folder": "sdcouncil", "members": "members"},
     "surnames": {"Marni von Wilpert": "von Wilpert", "Henry L. Foster III": "Foster", "Monica Montgomery Steppe": "Montgomery Steppe"},
     "datasets": [
       {"repo": "chrissoria/san-diego-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"},
-      {"repo": "chrissoria/san-diego-council", "records": "data/items.parquet", "what": "items", "date": "date",
-       "meetings": "data/meetings.parquet", "votes": "data/votes.parquet"}
+      {"repo": "chrissoria/ca-city-councils", "records": "data/items/san-diego.parquet", "what": "items", "date": "date",
+       "meetings": "data/meetings/san-diego.parquet", "votes": "data/votes/san-diego.parquet"}
     ]
   },
   {"id": "sf-supervisors", "place": "0667000", "name": "San Francisco Board of Supervisors", "body": "Board of Supervisors",
@@ -85,18 +85,18 @@
   {"id": "oakland-council", "place": "0653000", "name": "Oakland City Council", "body": "City Council",
    "datasets": [
      {"repo": "chrissoria/oakland-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"},
-     {"repo": "chrissoria/oakland-council", "records": "data/items.parquet", "what": "items", "date": "date",
-      "meetings": "data/meetings.parquet", "votes": "data/votes.parquet"}]},
+     {"repo": "chrissoria/ca-city-councils", "records": "data/items/oakland.parquet", "what": "items", "date": "date",
+      "meetings": "data/meetings/oakland.parquet", "votes": "data/votes/oakland.parquet"}]},
   {"id": "long-beach-council", "place": "0643000", "name": "Long Beach City Council", "body": "City Council",
    "datasets": [
      {"repo": "chrissoria/long-beach-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"},
-     {"repo": "chrissoria/long-beach-council", "records": "data/items.parquet", "what": "items", "date": "date",
-      "meetings": "data/meetings.parquet", "votes": "data/votes.parquet"}]},
+     {"repo": "chrissoria/ca-city-councils", "records": "data/items/long-beach.parquet", "what": "items", "date": "date",
+      "meetings": "data/meetings/long-beach.parquet", "votes": "data/votes/long-beach.parquet"}]},
   {"id": "fresno-council", "place": "0627000", "name": "Fresno City Council", "body": "City Council",
    "datasets": [
      {"repo": "chrissoria/fresno-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"},
-     {"repo": "chrissoria/fresno-council", "records": "data/items.parquet", "what": "items", "date": "date",
-      "meetings": "data/meetings.parquet", "votes": "data/votes.parquet"}]},
+     {"repo": "chrissoria/ca-city-councils", "records": "data/items/fresno.parquet", "what": "items", "date": "date",
+      "meetings": "data/meetings/fresno.parquet", "votes": "data/votes/fresno.parquet"}]},
   {"id": "berkeley-council", "place": "0606000", "name": "Berkeley City Council", "body": "City Council",
    "datasets": [{"repo": "chrissoria/berkeley-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
   {"id": "bakersfield-council", "place": "0603526", "name": "Bakersfield City Council", "body": "City Council",
@@ -104,8 +104,8 @@
   {"id": "salinas-council", "place": "0664224", "name": "Salinas City Council", "body": "City Council",
    "datasets": [
      {"repo": "chrissoria/salinas-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"},
-     {"repo": "chrissoria/salinas-council", "records": "data/items.parquet", "what": "items", "date": "date",
-      "meetings": "data/meetings.parquet", "votes": "data/votes.parquet"}]},
+     {"repo": "chrissoria/ca-city-councils", "records": "data/items/salinas.parquet", "what": "items", "date": "date",
+      "meetings": "data/meetings/salinas.parquet", "votes": "data/votes/salinas.parquet"}]},
   {"id": "newport-beach-council", "place": "0651182", "name": "Newport Beach City Council", "body": "City Council",
    "datasets": [{"repo": "chrissoria/newport-beach-ordinances", "records": "data/*.parquet", "what": "ordinances and resolutions", "date": "date"}]},
   {"id": "clovis-council", "place": "0614218", "name": "Clovis City Council", "body": "City Council",

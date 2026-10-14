@@ -113,8 +113,10 @@ only what a county printed or entered.
 
 The tables and their first columns are those of every council and board
 dataset made this way
-([san-diego-council](https://huggingface.co/datasets/chrissoria/san-diego-council)
-is one), so a city's can be set beside a county's.
+([ca-city-councils](https://huggingface.co/datasets/chrissoria/ca-city-councils),
+California's city councils, is made the same way, with `city` and `city_fips`
+where these say `county` and `county_fips`), so a city's can be set beside a
+county's.
 
 ### items
 

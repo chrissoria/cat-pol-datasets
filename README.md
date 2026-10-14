@@ -58,16 +58,22 @@ are published at [huggingface.co/chrissoria](https://huggingface.co/chrissoria).
   and hides others, and reads the text of each document: the PDF's own where
   it has some, and OCR (Tesseract) for the scans, which is everything before
   2021. Run by hand; `pull_san_diego.py` remains the weekly pull.
-- `build_sd_council.py` builds
-  [san-diego-council](https://huggingface.co/datasets/chrissoria/san-diego-council):
+- City councils are one dataset,
+  [ca-city-councils](https://huggingface.co/datasets/chrissoria/ca-city-councils),
+  made by `build_ca_city_councils.py` with the same code as the county boards
+  and kept apart from them: its rows say `city` and `city_fips` where a
+  board's say `county` and `county_fips`, its table of places is
+  `data/cities.parquet`, and each city keeps its own room. A reader still
+  names its old dataset (`chrissoria/<city>-council`) and is sent on there;
+  the old datasets hold only a card that points to the new one.
+- `build_sd_council.py` reads
   every San Diego City Council meeting since 2010, what was done with each
   item, and how each member voted, from the City Clerk's agenda site. The
   agenda gives who held each district; the Clerk's results summary gives the
   vote by district. `--base` reads every meeting; without it, the last 120
   days. `README_sd_council.md` is the card.
-- `build_legistar_council.py` builds a dataset of the same kind for each city
-  whose council keeps its record in Legistar: `oakland-council`,
-  `long-beach-council`, `fresno-council` and `salinas-council`. It reads the
+- `build_legistar_council.py` reads each city whose council keeps its record
+  in Legistar (Oakland, Long Beach, Fresno, Salinas) into the same dataset. It reads the
   city's API with the County builder's own functions; what differs from one
   city to the next is a line in its `CITIES`. `--city` says which, and `--base`
   reads every meeting. `README_legistar_council.md` is the one card, with each

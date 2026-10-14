@@ -138,10 +138,10 @@ hour more.
 | Step | Dataset | Reads | Hosts to allow |
 |---|---|---|---|
 | `build_sd_county.py` | `sd-county-ordinances` | meetings of the last 60 days; up to 300 documents | `webapi.legistar.com`, `sdcounty.legistar1.com` |
-| `build_sd_council.py` | `san-diego-council` | meetings of the last 120 days | `sandiego.hylandcloud.com` |
-| `build_legistar_council.py --city oakland` | `oakland-council` | meetings of the last 60 days | `webapi.legistar.com` |
-| `build_legistar_council.py --city fresno` | `fresno-council` | the same | `webapi.legistar.com` |
-| `build_legistar_council.py --city salinas` | `salinas-council` | the same | `webapi.legistar.com` |
+| `build_sd_council.py` | `ca-city-councils` (San Diego) | meetings of the last 120 days | `sandiego.hylandcloud.com` |
+| `build_legistar_council.py --city oakland` | `ca-city-councils` (Oakland) | meetings of the last 60 days | `webapi.legistar.com` |
+| `build_legistar_council.py --city fresno` | `ca-city-councils` (Fresno) | the same | `webapi.legistar.com` |
+| `build_legistar_council.py --city salinas` | `ca-city-councils` (Salinas) | the same | `webapi.legistar.com` |
 | `build_berkeley.py` | `berkeley-ordinances` | the City Clerk's list of ordinances | `records.cityofberkeley.info` |
 | `build_ca_county_boards.py --read --minutes 30` | `ca-county-boards` | San Diego County's tables as the first step just wrote them; then the county boards longest unread, their meetings of the last 60 days | `webapi.legistar.com` |
 
@@ -169,8 +169,16 @@ minutes=<m> counties=<those read> pushed=<True|False>`, after a
 `RESULT: legistar-<county> …` line for each county read. `waiting` is how many
 had no turn today.
 
-The cloud token needs write access to each of the six datasets and to
-`ca-county-boards`, all under `chrissoria/`. The San Diego council step needs `beautifulsoup4` in the
+**The city councils** are one dataset too, `chrissoria/ca-city-councils`
+(`build_ca_city_councils.py`), kept apart from the county boards. Each city's
+step publishes that city's files in it, its line in `data/cities.parquet`, and
+the card; San Diego's also writes its room there. The old datasets
+(`san-diego-council`, `oakland-council`, `fresno-council`, `salinas-council`)
+are no longer written to.
+
+The cloud token needs write access to each dataset a step writes: `sd-county-ordinances`,
+`berkeley-ordinances`, `federal-bills-active`, `ca-county-boards` and
+`ca-city-councils`, all under `chrissoria/`. The San Diego council step needs `beautifulsoup4` in the
 environment and fails without it (`cloud_setup.sh` installs it; the
 environment's own setup script has to be the current contents of that file).
 `pdfplumber` in the environment (`cloud_setup.sh` installs it if
@@ -184,7 +192,7 @@ write the file Capitol World reads for their rooms (`RESULT: chamber-file …`).
 Berkeley's ends `pushed=False` on a day the Clerk has nothing new, which is
 most days.
 
-Not in the run: `long-beach-council`, whose record in Legistar ends in 2023;
+Not in the run: Long Beach's council, whose record in Legistar ends in 2023;
 the reading of Berkeley's scans by OCR (`build_berkeley.py --texts`), which is
 hours of work and run by hand; and `us-places`, which needs building only when
 a body is added or the Census files change.

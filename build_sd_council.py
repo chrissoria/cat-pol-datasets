@@ -55,7 +55,6 @@ HF_REPO = "chrissoria/san-diego-council"
 OUT_DIR = bills.SCRIPT_DIR / "sdcouncil"
 CARD_FILE = bills.SCRIPT_DIR / "README_sd_council.md"
 TABLES = council_tables.TABLES  # the five every council's and board's dataset has; the Council's own columns come after the shared ones
-OLD_MEMBERS_FILE = "data/council.parquet"  # what the table of members was called
 
 SITE = "https://sandiego.hylandcloud.com/211agendaonlinecouncil"
 MEETING_PAGE = SITE + "/Meetings/ViewMeeting?id={id}&doctype={doctype}&site=council"
@@ -393,11 +392,8 @@ def items_table(agenda):
 
 
 def published(name):
-    try:
-        from huggingface_hub import hf_hub_download
-        return pd.read_parquet(hf_hub_download(HF_REPO, f"data/{name}.parquet", repo_type="dataset", token=bills.HF_TOKEN))
-    except Exception:
-        return None
+    """A table as published: this reader's own, kept in the one dataset of city councils."""
+    return council_tables.published(HF_REPO, name)
 
 
 def before(name, out_dir):
@@ -459,24 +455,12 @@ def write_tables(tables, out_dir):
 
 
 def upload(out_dir, with_card):
-    from huggingface_hub import CommitOperationAdd, HfApi
-    api = HfApi(token=bills.HF_TOKEN)
-    api.create_repo(HF_REPO, repo_type="dataset", exist_ok=True)
-    problem = bills.hf_write_problem(HF_REPO)
-    if problem:
-        log.error(f"San Diego council tables not uploaded: {problem}")
+    """Publish the tables as San Diego's files in the one dataset of city councils (council_tables.publish sends them)."""
+    try:
+        return council_tables.publish(HF_REPO, out_dir, None, with_card, "Update San Diego City Council tables")
+    except PermissionError as e:
+        log.error(f"San Diego council tables not uploaded: {e}")
         return False
-    operations = [CommitOperationAdd(path_in_repo=f"data/{name}.parquet", path_or_fileobj=str(out_dir / f"{name}.parquet")) for name in (*TABLES, "rosters")]
-    listed_files = set(api.list_repo_files(HF_REPO, repo_type="dataset"))
-    renamed = OLD_MEMBERS_FILE in listed_files
-    if renamed:  # the table under its old name gives way, and the card has to say where it is now
-        from huggingface_hub import CommitOperationDelete
-        operations.append(CommitOperationDelete(path_in_repo=OLD_MEMBERS_FILE))
-    if (with_card or renamed or "README.md" not in listed_files) and CARD_FILE.exists():
-        operations.append(CommitOperationAdd(path_in_repo="README.md", path_or_fileobj=str(CARD_FILE)))
-    api.create_commit(repo_id=HF_REPO, repo_type="dataset", operations=operations,
-                      commit_message=f"Update San Diego City Council tables ({datetime.now(timezone.utc).strftime('%Y-%m-%d')})")
-    return True
 
 
 def main(argv=None):

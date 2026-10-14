@@ -78,6 +78,15 @@ def standard(tables):
 COUNTY_BOARDS = "chrissoria/ca-county-boards"
 BOARD = re.compile(r"chrissoria/([a-z-]+-county)(-earlier)?-board")
 EARLIER = "earlier"  # the record a county kept in another system before the one it has now, where both are read
+# A city's council is the same: its tables are that city's files in the one dataset of city councils
+# (build_ca_city_councils.py), though its reader names "chrissoria/<city>-council" as it always did.
+CITY_COUNCILS = "chrissoria/ca-city-councils"
+
+
+def council_of(repo):
+    """The city whose council a reader's tables are for ("oakland-council"), or None."""
+    import build_ca_city_councils
+    return build_ca_city_councils.city_of(repo)
 
 
 def board_of(repo):
@@ -96,9 +105,13 @@ def published(repo, name):
     """A table of a dataset as last published, or None. A county board's is the one its reader last wrote."""
     import pandas as pd
     import build_federal_bills as bills
-    county = board_of(repo)
+    county, city = board_of(repo), council_of(repo)
     part = f"{part_of(repo)}/" if part_of(repo) else ""
-    place, file = (COUNTY_BOARDS, f"raw/{county[:-len('-county')]}/{part}{name}.parquet") if county else (repo, f"data/{name}.parquet")
+    if city:
+        import build_ca_city_councils
+        place, file = CITY_COUNCILS, f"raw/{build_ca_city_councils.slug_of(city)}/{name}.parquet"
+    else:
+        place, file = (COUNTY_BOARDS, f"raw/{county[:-len('-county')]}/{part}{name}.parquet") if county else (repo, f"data/{name}.parquet")
     try:
         from huggingface_hub import hf_hub_download
         return pd.read_parquet(hf_hub_download(place, file, repo_type="dataset", token=bills.HF_TOKEN))
@@ -130,13 +143,17 @@ def write_tables(tables, out_dir):
 def publish(repo, out_dir, card, with_card, message):
     """Publish the five tables written in `out_dir`, and the card if asked for or if the dataset has none.
 
-    A county board's tables go into the one dataset of county boards, as that county's files; the card there is the one
-    card for all of them, so `card` is not used. Raises PermissionError if the token may not write.
+    A county board's tables go into the one dataset of county boards, as that county's files, and a city council's into
+    the one dataset of city councils; the card there is the one card for all of them, so `card` is not used. Raises
+    PermissionError if the token may not write.
     """
     import build_federal_bills as bills
     if board_of(repo):
         import build_ca_county_boards
         return build_ca_county_boards.publish_county(board_of(repo), out_dir, part=part_of(repo))
+    if council_of(repo):
+        import build_ca_city_councils
+        return build_ca_city_councils.publish_city(council_of(repo), out_dir)
     from huggingface_hub import CommitOperationAdd, HfApi
     hub = HfApi(token=bills.HF_TOKEN)
     hub.create_repo(repo, repo_type="dataset", exist_ok=True)
