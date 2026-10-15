@@ -145,9 +145,9 @@ def test_a_readers_tables_for_a_county_board_go_to_the_one_dataset(monkeypatch, 
 
 def test_a_county_not_listed_is_not_published(tmp_path):
     try:
-        boards.publish_county("kern-county", tmp_path)
+        boards.publish_county("nowhere-county", tmp_path)
     except ValueError as e:
-        assert "kern-county is not among the counties" in str(e)
+        assert "nowhere-county is not among the counties" in str(e)
     else:
         raise AssertionError("published a county that is not listed")
 

@@ -222,6 +222,13 @@ COUNTIES = {
                                 "only the Board's own meetings are here."},
     "imperial-county": {**GRANICUS, "read_from": "",
                         "note": "Meetings only, with a link to each agenda and recording: the County publishes no minutes there."},
+    "kern-county": {**PDF, "system": "Granicus video archive, Summaries of Proceedings as PDF", "builder": "build_kern_board.py",
+                    "note": "Read from the Summary of Proceedings of each meeting, which prints a vote under every item "
+                            "(\"Perez-Flores: All Ayes\", \"3 Ayes; 2 Noes - Maben, Maggard\"). Three vote rows in four rest on "
+                            "\"All Ayes\" with the roll call and the clerk's notes on who came and went (`read_from` "
+                            "`unanimous`). The consent agenda's one vote is printed under every consent item. Supervisors are "
+                            "named by surname, as the minutes print them. 34 sets of minutes, most from 2025 and 2026, are "
+                            "scans and are not read."},
     "lassen-county": {**LEGISTAR}, "del-norte-county": {**CIVICCLERK}, "colusa-county": {**CIVICCLERK},
     "plumas-county": {**CIVICCLERK}, "mariposa-county": {**CIVICCLERK}, "modoc-county": {**CIVICCLERK}, "alpine-county": {**CIVICCLERK},
     "marin-county": {**GRANICUS, "note": TYPED.format(share="about 28%", years="")},
