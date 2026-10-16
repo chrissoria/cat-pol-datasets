@@ -1019,13 +1019,17 @@ def main():
         try:
             import build_world_snapshot
             build_world_snapshot.main([])
-        except Exception as e:
+        except BaseException as e:  # never fatal, a panic in a library's import included (not KeyboardInterrupt)
+            if isinstance(e, KeyboardInterrupt):
+                raise
             log.warning(f"World snapshot not updated: {e}")
         # The committee tables are their own dataset; refresh them in the same run. Never fatal.
         try:
             import build_committees
             build_committees.main(["--max-minutes", "10"])
-        except Exception as e:
+        except BaseException as e:  # never fatal, a panic in a library's import included (not KeyboardInterrupt)
+            if isinstance(e, KeyboardInterrupt):
+                raise
             log.warning(f"Committee tables not updated: {e}")
 
     # Executive orders are a separate dataset from a separate source (the Federal Register),
@@ -1034,7 +1038,9 @@ def main():
         try:
             import update_executive_orders
             update_executive_orders.main([])
-        except Exception as e:
+        except BaseException as e:  # never fatal, a panic in a library's import included (not KeyboardInterrupt)
+            if isinstance(e, KeyboardInterrupt):
+                raise
             log.warning(f"Executive orders not updated: {e}")
 
     # The Supreme Court's cases and applications, likewise: other sources, another dataset, never fatal.
@@ -1042,7 +1048,9 @@ def main():
         try:
             import build_supreme_court
             build_supreme_court.main([])
-        except Exception as e:
+        except BaseException as e:  # never fatal, a panic in a library's import included (not KeyboardInterrupt)
+            if isinstance(e, KeyboardInterrupt):
+                raise
             log.warning(f"Supreme Court tables not updated: {e}")
 
     # California's bills, from the Legislature's own nightly export: another source, another dataset, never fatal.
@@ -1050,7 +1058,9 @@ def main():
         try:
             import build_california_bills
             build_california_bills.main([])
-        except Exception as e:
+        except BaseException as e:  # never fatal, a panic in a library's import included (not KeyboardInterrupt)
+            if isinstance(e, KeyboardInterrupt):
+                raise
             log.warning(f"California tables not updated: {e}")
 
     # Local bodies, each from its own source into its own dataset: one after another, and never fatal.
@@ -1059,7 +1069,9 @@ def main():
         for module, arguments, what in LOCAL_STEPS:
             try:
                 importlib.import_module(module).main(arguments)
-            except (Exception, SystemExit) as e:
+            except KeyboardInterrupt:
+                raise
+            except BaseException as e:  # SystemExit, and a panic in a library's import (pdfplumber's, once), stop one step only
                 log.warning(f"{what} not updated: {type(e).__name__}: {e}")
 
     log.info(f"RESULT: federal-bills fetched={len(new_df)} total={len(combined)} pushed={pushed}")

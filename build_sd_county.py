@@ -217,7 +217,10 @@ def pdf_reader():
         import pdfplumber
         logging.getLogger("pdfminer").setLevel(logging.ERROR)
         return pdfplumber
-    except ImportError:
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as e:  # not only ImportError: a broken install can panic on import (pyo3's PanicException)
+        log.warning(f"pdfplumber not usable, PDFs wait for a later run: {type(e).__name__}: {e}")
         return None
 
 

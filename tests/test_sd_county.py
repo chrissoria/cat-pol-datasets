@@ -138,3 +138,18 @@ def test_a_supervisor_is_given_the_district_the_source_leaves_out():
     # The record holds his current term; his votes show he was there four years earlier.
     assert table.set_index("name").loc["Jim Desmond", ["first_vote", "last_vote", "votes"]].tolist() == ["2019-01-08", "2026-10-07", 2]
     assert table.set_index("name").loc["Greg Cox", "first_vote"] == ""
+
+
+def test_pdfs_wait_when_pdfplumber_panics_on_import(monkeypatch):
+    # A broken install once made `import pdfplumber` raise pyo3's PanicException, a BaseException: the run goes on.
+    import builtins
+    import build_sd_county
+    class PanicException(BaseException):
+        pass
+    real = builtins.__import__
+    def imported(name, *args, **kwargs):
+        if name == "pdfplumber":
+            raise PanicException("Python API call failed")
+        return real(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, "__import__", imported)
+    assert build_sd_county.pdf_reader() is None
