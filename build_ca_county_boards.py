@@ -100,7 +100,25 @@ def vote_kind(word):
 # `daily` is for a county the daily run reads again (read_some): its system answers from the cloud, where the run is.
 LEGISTAR = {"system": "Legistar", "read_from": SYSTEM, "builder": "build_legistar_council.py", "folder": "legistar/{key}", "daily": True}
 # The readers the daily run can call for one county, and what each takes the county's name with.
-READERS = {"build_legistar_council.py": ("build_legistar_council", "--city")}
+# A reader that covers several counties is told which; one written for a single county is run as it is (None).
+READERS = {"build_legistar_council.py": ("build_legistar_council", "--city"),
+           "build_civicclerk_board.py": ("build_civicclerk_board", "--county"),
+           "build_iqm2_board.py": ("build_iqm2_board", "--county"),
+           "build_primegov_board.py": ("build_primegov_board", "--county"),
+           "build_destiny_board.py": ("build_destiny_board", "--county"),
+           "build_granicus_board.py": ("build_granicus_board", "--county"),
+           "build_legistar_pages_board.py": ("build_legistar_pages_board", "--county"),
+           **{f"build_{name}_board.py": (f"build_{name}_board", None) for name in (
+               "la_county", "orange", "sacramento", "alameda", "stanislaus", "san_luis_obispo", "merced", "yuba",
+               "calaveras", "san_benito", "amador", "kern", "sierra")}}
+# A reader of PDF minutes keeps the text of every document it has read in text/ beside its tables, and reads a document
+# only if its text is not there; some build their tables from that folder. A fresh checkout in the cloud has none, so
+# the folder is kept in the dataset too, as one file, raw/<county>/texts.tar.gz: put in place before the reader runs
+# and sent back after it (texts_in, texts_out).
+TEXTS = "texts.tar.gz"
+# Where a reader is first asked something, to see whether the place the run is in may reach it at all: the cloud
+# environment reaches only the hosts allowed in it. Others are asked at the county's own address in bodies.json.
+PROBES = {"build_legistar_council.py": "https://webapi.legistar.com/v1/fresno/bodies"}
 CIVICCLERK = {"system": "CivicClerk", "read_from": SYSTEM, "builder": "build_civicclerk_board.py", "folder": "civicclerk/{key}"}
 IQM2 = {"system": "IQM2", "read_from": SYSTEM, "builder": "build_iqm2_board.py", "folder": "iqm2/{key}"}
 PDF = {"read_from": TEXT, "folder": "minutes_pdf/{key}"}
@@ -173,7 +191,7 @@ COUNTIES = {
                               "2020 are scans and are not read; earlier ones are on a site of the County's that refuses this reader."},
     "placer-county": {**LEGISTAR, "note": "The County took up this system in July 2026. What it holds from before is practice entered "
                                           "while it was set up, and is left out."},
-    "santa-cruz-county": {**IQM2, "site": "https://santacruzcountyca.iqm2.com/Citizens/",
+    "santa-cruz-county": {**IQM2, "daily": False, "site": "https://santacruzcountyca.iqm2.com/Citizens/",
                           "note": "Ends in December 2024, when the County left this system."},
     "yolo-county": {"system": "Destiny Hosted", "read_from": PAGE, "builder": "build_destiny_board.py", "folder": "destiny/{key}",
                     "note": "Votes are read from the words of the minutes: pages from 2016, the text of PDF minutes before."},
@@ -296,7 +314,8 @@ def facts_of(key, listed=None, kind=None):
     return {
         "key": key, "name": name, "slug": slug, "fips": body["place"], "body": body["body"], "kind": kind,
         "system": county["system"], "builder": county["builder"], "site": county.get("site") or body.get("url", ""),
-        "folder": county["folder"].format(key=key), "raw": county.get("raw", True), "daily": county.get("daily", False),
+        "folder": county["folder"].format(key=key), "raw": county.get("raw", True),
+        "daily": county.get("daily", county["builder"] in READERS),
         "drop": county.get("drop", {}), "read_from": county["read_from"],
         "earlier": {**county["earlier"], "folder": county["earlier"]["folder"].format(key=key)} if county.get("earlier") else None,
         "room": ROOM.format(fips=body["place"]) if body.get("world") == "chamber" else "",
@@ -591,15 +610,73 @@ def publish_county(key, folder, out_dir=None, part="", kind=None):
     if problem:
         raise PermissionError(problem)
     out_dir = Path(out_dir or kind.out_dir)
-    counties = counties_table([build_county(key, out_dir, folder=folder, part=part, kind=kind)], held_counties(out_dir, kind), kind)
+    held = held_counties(out_dir, kind)
+    row = build_county(key, out_dir, folder=folder, part=part, kind=kind)
+    before = held.loc[held[kind.fips] == row[kind.fips], "votes"] if held is not None else []
+    if len(before) and not kind.entries[key].get("hold_votes") and row["votes"] < 0.98 * int(before.iloc[0]):
+        # A reader run where its own working files are missing can write far less than it read before: never over it.
+        raise RuntimeError(f"{key}: {row['votes']} votes where {int(before.iloc[0])} are published; not publishing")
+    counties = counties_table([row], held, kind)
     write(counties, out_dir / "data" / f"{kind.places}.parquet")
     return upload(out_dir, [facts_of(key, kind=kind)["slug"]], True, counties, kind)
 
 
+def texts_in(key):
+    """Put a county's kept texts where its reader looks for them, from the dataset, unless they are here already."""
+    facts = facts_of(key)
+    folder = bills.SCRIPT_DIR / facts["folder"]
+    if (folder / "text").is_dir() and any((folder / "text").iterdir()):
+        return
+    import tarfile
+    from huggingface_hub import hf_hub_download
+    try:
+        path = hf_hub_download(REPO, f"raw/{facts['slug']}/{TEXTS}", repo_type="dataset", token=bills.HF_TOKEN)
+    except Exception as e:
+        log.warning(f"{key}: no kept texts in the dataset ({type(e).__name__}); its reader starts without them")
+        return
+    folder.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(path, "r:gz") as tar:
+        tar.extractall(folder, filter="data")  # only plain files, and only inside the folder
+
+
+def texts_out(key):
+    """Send a county's kept texts to the dataset as one file, raw/<county>/texts.tar.gz."""
+    facts = facts_of(key)
+    text = bills.SCRIPT_DIR / facts["folder"] / "text"
+    if not text.is_dir():
+        return False
+    import tarfile
+    import tempfile
+    from huggingface_hub import HfApi
+    with tempfile.TemporaryDirectory() as scratch:
+        packed = Path(scratch) / TEXTS
+        with tarfile.open(packed, "w:gz") as tar:
+            tar.add(text, arcname="text")
+        HfApi(token=bills.HF_TOKEN).upload_file(path_or_fileobj=str(packed), path_in_repo=f"raw/{facts['slug']}/{TEXTS}",
+                                                repo_id=REPO, repo_type="dataset", commit_message=f"Kept texts of {facts['slug']}")
+    return True
+
+
+def reachable(key, listed):
+    """Whether the run may reach a county's host at all. A refusal is an answer (the reader then stops on it); no
+    answer, or a proxy that will not pass the request, is not."""
+    import requests
+    url = PROBES.get(COUNTIES[key]["builder"]) or listed[key].get("url", "")
+    if not url:
+        return True
+    try:
+        requests.head(url, headers={"User-Agent": "cat-pol-datasets (+https://github.com/chrissoria/cat-pol-datasets)"},
+                      timeout=15, allow_redirects=False)
+        return True
+    except requests.RequestException:
+        return False
+
+
 def read_some(minutes, out_dir=OUT_DIR):
-    """The daily run's part. San Diego County's tables, if its own step wrote them today, are copied in. Then the counties
-    marked `daily` are read again by their readers, the one longest unread first, until `minutes` are used: a county's
-    turn comes every few days, which is as often as a board meets. Each publishes itself as it is read."""
+    """The daily run's part. San Diego County's tables, if its own step wrote them today, are copied in. Then every county
+    with a reader is read again by it, the one longest unread first, until `minutes` are used: a county's turn comes
+    every few days, which is as often as a board meets. Each publishes itself as it is read. A county whose host the
+    run cannot reach (not allowed in the cloud environment) is passed over and named, not counted as failed."""
     problem = bills.hf_write_problem(REPO)
     if problem:
         log.error(f"County boards not read: {problem}")
@@ -618,25 +695,36 @@ def read_some(minutes, out_dir=OUT_DIR):
         except Exception as e:
             log.error(f"sd-county not copied: {type(e).__name__}: {e}")
             failed.append("sd-county")
-    due = sorted((key for key, county in COUNTIES.items() if county.get("daily") and county["builder"] in READERS),
+    due = sorted((key for key, county in COUNTIES.items() if county.get("daily", True) and county["builder"] in READERS),
                  key=lambda key: last.get(listed[key]["place"], ""))
-    waiting = len(due)
+    waiting, unreachable = len(due), []
     for key in due:
         if time.time() - started > minutes * 60:
             break
         module, flag = READERS[COUNTIES[key]["builder"]]
         waiting -= 1
+        if not reachable(key, listed):
+            unreachable.append(key)
+            continue
         try:
-            code = importlib.import_module(module).main([flag, key])
-        except (Exception, SystemExit) as e:
+            if flag is None:  # a reader of PDF minutes: its kept texts first
+                texts_in(key)
+            code = importlib.import_module(module).main([flag, key] if flag else [])
+            if not code and flag is None:
+                texts_out(key)
+        except KeyboardInterrupt:
+            raise
+        except BaseException as e:
             code = e
         if code:
             log.error(f"{key} not read: {code}")
             failed.append(key)
         else:
             read.append(key)
-    log.info(f"RESULT: county-boards read={len(read)} failed={len(failed)} waiting={waiting} minutes={(time.time() - started) / 60:.0f} "
-             f"counties={','.join(read)} pushed={bool(read)}")
+    if unreachable:
+        log.warning(f"Hosts not reachable from here, passed over: {','.join(unreachable)}")
+    log.info(f"RESULT: county-boards read={len(read)} failed={len(failed)} unreachable={len(unreachable)} waiting={waiting} "
+             f"minutes={(time.time() - started) / 60:.0f} counties={','.join(read)} pushed={bool(read)}")
     return 1 if failed else 0
 
 

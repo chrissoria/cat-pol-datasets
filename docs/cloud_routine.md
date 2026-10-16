@@ -124,78 +124,81 @@ began: `python build_california_bills.py --session 2023` (two minutes). The
 dataset goes back to 1999-2000; the Legislature's files for earlier sessions
 hold only the measures that were chaptered.
 
-### Local bodies
+### Local bodies: two routines of their own
 
-After California the run brings six local datasets up to date, one after
-another, and then the county boards (below). They are listed in `LOCAL_STEPS` in `build_federal_bills.py`, and none
-can fail the run: a step that cannot reach its source or may not write logs one
-ERROR line saying which, and the next step starts. Each starts from its own
-published tables, since the repository is cloned afresh for every run, reads
-what is recent again, and refuses to publish fewer rows than are published.
-Together they take about ten minutes; the county boards take up to half an
-hour more.
+California's counties and cities are no longer part of this run. Each is a
+routine of its own, in the same environment, so a failure in one stops
+neither the federal pull nor the other:
 
-| Step | Dataset | Reads | Hosts to allow |
+| Routine | Command | Schedule (UTC) | Datasets |
 |---|---|---|---|
-| `build_sd_county.py` | `sd-county-ordinances` | meetings of the last 60 days; up to 300 documents | `webapi.legistar.com`, `sdcounty.legistar1.com` |
-| `build_sd_council.py` | `ca-city-councils` (San Diego) | meetings of the last 120 days | `sandiego.hylandcloud.com` |
-| `build_legistar_council.py --city oakland` | `ca-city-councils` (Oakland) | meetings of the last 60 days | `webapi.legistar.com` |
-| `build_legistar_council.py --city fresno` | `ca-city-councils` (Fresno) | the same | `webapi.legistar.com` |
-| `build_legistar_council.py --city salinas` | `ca-city-councils` (Salinas) | the same | `webapi.legistar.com` |
-| `build_berkeley.py` | `berkeley-ordinances` | the City Clerk's list of ordinances | `records.cityofberkeley.info` |
-| `build_ca_county_boards.py --read --minutes 30` | `ca-county-boards` | San Diego County's tables as the first step just wrote them; then the county boards longest unread, their meetings of the last 60 days | `webapi.legistar.com` |
+| CA counties · daily | `python3 run_ca_counties.py --minutes 60` | 14:30 | `sd-county-ordinances`, `ca-county-boards` |
+| CA cities · daily | `python3 run_ca_cities.py` | 14:00 | `ca-city-councils`, `berkeley-ordinances` |
 
-**The county boards** are one dataset, `chrissoria/ca-county-boards`, a file
-a county within each table. The last step copies San Diego County into it and
-then calls the reader of each county marked `daily` in
-`build_ca_county_boards.py` (`COUNTIES`), the one read longest ago first,
-starting no county after 30 minutes. A county's turn so comes every few days,
-which is as often as a board meets. Each county publishes itself as it is
-read: its files under `data/` and `raw/`, its line in `data/counties.parquet`
-(`read_on` is the day), and the card. The step asks first whether the token
-may write to the dataset, and reads nothing if it may not.
+Each runs its steps one after another (`local_steps.py`): a step that fails,
+or raises anything at all (a library that panics on import included), logs
+one ERROR line and the next starts. Each step starts from its own published
+tables, since the repository is cloned afresh for every run, reads what is
+recent again, and refuses to publish fewer votes than are published. Each
+script ends with `RESULT: ca-counties …` or `RESULT: ca-cities …`
+`steps=<n> failed=<names> pushed=<True|False>`.
 
-Marked `daily` now are the fifteen counties whose record is in Legistar, whose
-host the run already reaches. To add a county on another system: allow its
-host in the environment, add its reader to `READERS` and `"daily": True` to
-its entry. The hosts are `<county>.api.civicclerk.com` (seven counties),
-`<county>.iqm2.com` (four), `tularecounty.primegov.com`,
-`public.destinyhosted.com`; the three read from PDFs (`file.lacounty.gov` and
-the search its page uses, `ocagendaext.oc.gov`, `agendanet.saccounty.gov`)
-also need `pdfplumber` and `pypdfium2`, and are slower.
+**Cities** (`run_ca_cities.py`): `build_sd_council.py` (San Diego, meetings
+of the last 120 days, `sandiego.hylandcloud.com`), `build_legistar_council.py
+--city oakland|fresno|salinas` (the last 60 days, `webapi.legistar.com`), and
+`build_berkeley.py` (`records.cityofberkeley.info`). The councils publish into
+`chrissoria/ca-city-councils`, a city's files in it and its line in
+`data/cities.parquet`; San Diego's also writes its room. Not in it: Long
+Beach, whose record in Legistar ends in 2023.
 
-The step reports `RESULT: county-boards read=<n> failed=<n> waiting=<n>
-minutes=<m> counties=<those read> pushed=<True|False>`, after a
-`RESULT: legistar-<county> …` line for each county read. `waiting` is how many
-had no turn today.
+**Counties** (`run_ca_counties.py`): `build_sd_county.py` first (meetings of
+the last 60 days, up to 300 documents; `webapi.legistar.com`,
+`sdcounty.legistar1.com`), then `build_ca_county_boards.py --read`: San Diego
+County's tables copied into `ca-county-boards`, then every county with a
+reader (`READERS`), the one read longest ago first, starting no county after
+the minutes given. A county's turn so comes every few days. Each publishes
+itself as it is read. Before a county is read its host is asked once
+(`reachable`): a host the environment does not allow is passed over and
+named (`unreachable=` in the RESULT line), not counted as failed. A reader of
+PDF minutes keeps the text of each document it has read; the cloud gets that
+folder from the dataset (`raw/<county>/texts.tar.gz`) before the reader runs
+and sends it back after (`texts_in`, `texts_out`). Santa Cruz is left out: its
+record ended when it left its system in 2024.
 
-**The city councils** are one dataset too, `chrissoria/ca-city-councils`
-(`build_ca_city_councils.py`), kept apart from the county boards. Each city's
-step publishes that city's files in it, its line in `data/cities.parquet`, and
-the card; San Diego's also writes its room there. The old datasets
-(`san-diego-council`, `oakland-council`, `fresno-council`, `salinas-council`)
-are no longer written to.
+Hosts the environment must allow for every county to be read:
 
-The cloud token needs write access to each dataset a step writes: `sd-county-ordinances`,
-`berkeley-ordinances`, `federal-bills-active`, `ca-county-boards` and
-`ca-city-councils`, all under `chrissoria/`. The San Diego council step needs `beautifulsoup4` in the
-environment and fails without it (`cloud_setup.sh` installs it; the
-environment's own setup script has to be the current contents of that file).
-`pdfplumber` in the environment (`cloud_setup.sh` installs it if
-it can) lets the County step read the items whose document is a PDF; without
-it those wait (`pdf=skipped`) and Word documents are still read.
+- Legistar: `webapi.legistar.com`, `sfgov.legistar.com`
+- CivicClerk: `alpinecoca`, `buttecoca`, `colusacoca`, `delnortecoca`,
+  `inyococa`, `mariposacoca`, `modoccoca`, `monococa`, `plumascoca`,
+  `trinitycoca`, `tuolumnecoca` `.api.civicclerk.com`
+- IQM2: `sccgov.iqm2.com`, `sanjoaquincountyca.iqm2.com`,
+  `suttercountyca.iqm2.com`, `riversidecountyca.iqm2.com`,
+  `calaverascountyca.iqm2.com`
+- PrimeGov: `tularecounty.primegov.com`, `ventura.primegov.com`,
+  `shastacounty.primegov.com`
+- Granicus: `glenncounty`, `marin`, `imperial`, `alamedacounty`, `cosb`,
+  `amador`, `slocounty`, `kern` `.granicus.com`, and the storage the San
+  Benito and Amador documents are sent from: `s3.amazonaws.com`,
+  `granicus-azasp-hypatia.s3.amazonaws.com`
+- Others: `public.destinyhosted.com` (Yolo), `file.lacounty.gov` and
+  `lacounty.gov` (Los Angeles), `ocagendaext.oc.gov` (Orange),
+  `agendanet.saccounty.gov` (Sacramento), `www.stancounty.com` (Stanislaus),
+  `web2.co.merced.ca.us` (Merced), `agendasuite.org` (Yuba),
+  `agenda.slocounty.ca.gov` (San Luis Obispo), `www.sierracounty.ca.gov`
+  (Sierra)
 
-Each reports a line of its own: `RESULT: sd-county …`, `RESULT: sd-council …`,
-`RESULT: legistar-oakland …` (and `-fresno`, `-salinas`), `RESULT: berkeley …`,
-each ending `pushed=True|False`. The County and the San Diego council also
-write the file Capitol World reads for their rooms (`RESULT: chamber-file …`).
-Berkeley's ends `pushed=False` on a day the Clerk has nothing new, which is
-most days.
+The PDF readers also need `pdfplumber` and `pypdfium2`, which `cloud_setup.sh`
+installs (after a fresh `cryptography`: the image's own panicked on import).
 
-Not in the run: Long Beach's council, whose record in Legistar ends in 2023;
-the reading of Berkeley's scans by OCR (`build_berkeley.py --texts`), which is
-hours of work and run by hand; and `us-places`, which needs building only when
-a body is added or the Census files change.
+The cloud token needs write access to `federal-bills-active`,
+`sd-county-ordinances`, `berkeley-ordinances`, `ca-county-boards` and
+`ca-city-councils`, all under `chrissoria/`. The environment's own setup
+script has to be the current contents of `cloud_setup.sh`.
+
+Not in any run: the reading of Berkeley's scans by OCR
+(`build_berkeley.py --texts`), which is hours of work and run by hand; and
+`us-places`, which needs building only when a body is added or the Census
+files change.
 
 ## 2. Guards
 

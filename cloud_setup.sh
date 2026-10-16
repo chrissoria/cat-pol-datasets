@@ -18,6 +18,10 @@ if ! $PY -m pip install --quiet "${PKGS[@]}"; then
 fi
 # build_sd_council.py reads the City Clerk's pages with this, and cannot go without.
 $PY -m pip install --quiet "beautifulsoup4>=4.12" || echo "cloud_setup: beautifulsoup4 not installed; the San Diego council step will fail"
-# Only build_sd_county.py wants this, for PDF documents, and it goes without if it has to.
-$PY -m pip install --quiet "pdfplumber>=0.10" || echo "cloud_setup: pdfplumber not installed; PDF documents will be skipped"
+# PDFs: San Diego County's documents and the county boards read from PDF minutes (run_ca_counties.py). pdfplumber's
+# import goes through the cryptography package, and the image's own copy (Debian's) panicked on import there on
+# 2026-10-16, so pip's own copy is put over it first. Each step goes without PDFs if this fails.
+$PY -m pip install --quiet --ignore-installed "cryptography>=42" || echo "cloud_setup: cryptography not reinstalled; PDF reading may fail"
+$PY -m pip install --quiet "pdfplumber>=0.10" "pypdfium2>=4" || echo "cloud_setup: pdfplumber not installed; PDF documents will be skipped"
+$PY -c 'import pdfplumber, pypdfium2' 2>/dev/null && echo "cloud_setup: PDF reading ok" || echo "cloud_setup: PDF reading not available"
 $PY -c 'import pandas, pyarrow, requests, dotenv, datasets, huggingface_hub; print("setup ok")'

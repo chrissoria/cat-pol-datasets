@@ -109,7 +109,7 @@ def test_a_countys_line_is_counted_from_its_tables_and_the_card_lists_it(tmp_pat
     row = boards.county_row(facts, tables, "2026-10-13")
     assert (row["first_meeting"], row["last_meeting"], row["first_vote"], row["last_vote"]) == ("2015-01-06", "2026-10-06", "2015-01-06", "2026-10-06")
     assert (row["votes"], row["meetings"], row["serving"], row["kept_current"], row["read_from"]) == (2, 3, 2, "daily run", "system")
-    assert boards.county_row(boards.facts_of("sutter-county"), tables, "2026-10-13")["kept_current"] == "by hand"
+    assert boards.county_row(boards.facts_of("santa-cruz-county"), tables, "2026-10-13")["kept_current"] == "by hand"
     counties = boards.counties_table([row])
     assert list(counties.columns) == boards.COUNTY.columns
     # One county built again replaces its own line and leaves the others.
@@ -154,8 +154,9 @@ def test_a_county_not_listed_is_not_published(tmp_path):
 
 def test_the_daily_run_reads_the_counties_longest_unread_until_its_time_is_up(monkeypatch, tmp_path):
     listed = {body["id"]: body["place"] for body in bodies.read_bodies()}
-    daily = [key for key, county in boards.COUNTIES.items() if county.get("daily") and county["builder"] in boards.READERS]
-    assert "fresno-county" in daily and "sd-county" not in daily and "santa-clara-county" not in daily
+    daily = [key for key, county in boards.COUNTIES.items() if county.get("daily", True) and county["builder"] in boards.READERS]
+    assert "fresno-county" in daily and "santa-clara-county" in daily and "alpine-county" in daily
+    assert "kern-county" in daily and "sd-county" not in daily and "santa-cruz-county" not in daily
     # Every county was read on the 12th but two, read on the 10th and the 11th: those two come first, oldest first.
     held = pd.DataFrame({"county_fips": [listed[key] for key in daily],
                          "read_on": ["2026-10-10" if key == "lake-county" else "2026-10-11" if key == "napa-county" else "2026-10-12" for key in daily]})
@@ -171,6 +172,7 @@ def test_the_daily_run_reads_the_counties_longest_unread_until_its_time_is_up(mo
             return 1 if argv[1] == "napa-county" else 0
 
     monkeypatch.setattr(boards.importlib, "import_module", lambda name: Reader)
+    monkeypatch.setattr(boards, "reachable", lambda key, listed: key != "alpine-county")  # one host the run may not reach
     clock = iter(range(0, 100000, 400))  # each look at the clock is 400 seconds on
     monkeypatch.setattr(boards.time, "time", lambda: next(clock))
     assert boards.read_some(15, tmp_path) == 1  # Napa's reader failed, and the run says so
@@ -253,3 +255,44 @@ def test_a_city_councils_tables_go_to_the_one_dataset_of_city_councils_and_say_c
     one = boards.one_shape("votes", plain.assign(read_from=boards.SYSTEM, vote_kind="AYE"), facts)
     assert list(one.columns)[:2] == ["city", "city_fips"] and one["city"].tolist() == ["Oakland"] and one["city_fips"].tolist() == ["0653000"]
     assert cities.CITY.columns[:2] == ["city", "city_fips"] and boards.COUNTY.columns[:2] == ["county", "county_fips"]
+
+
+def test_a_county_is_not_published_over_with_far_fewer_votes(monkeypatch, tmp_path):
+    held = pd.DataFrame([{**{column: "" for column in boards.COUNTY.columns}, "county": "Lake", "county_fips": "06033", "votes": 1000}])
+    monkeypatch.setattr(boards, "held_counties", lambda out_dir, kind=None: held)
+    monkeypatch.setattr(boards.bills, "hf_write_problem", lambda repo=None: None)
+    monkeypatch.setattr(boards, "build_county", lambda key, out_dir, **more: {"county": "Lake", "county_fips": "06033", "votes": 40})
+    monkeypatch.setattr(boards, "upload", lambda *args, **more: (_ for _ in ()).throw(AssertionError("published")))
+    try:
+        boards.publish_county("lake-county", tmp_path, tmp_path)
+    except RuntimeError as e:
+        assert "40 votes where 1000 are published" in str(e)
+    else:
+        raise AssertionError("published 40 votes over 1,000")
+
+
+def test_a_pdf_readers_kept_texts_go_to_the_dataset_and_come_back(monkeypatch, tmp_path):
+    import io, tarfile
+    monkeypatch.setattr(boards.bills, "SCRIPT_DIR", tmp_path)
+    text = tmp_path / "minutes_pdf" / "kern-county" / "text"
+    text.mkdir(parents=True)
+    (text / "5357.txt").write_text("SUMMARY OF PROCEEDINGS")
+    sent = {}
+    import huggingface_hub
+
+    class Api:
+        def __init__(self, token=None):
+            pass
+
+        def upload_file(self, path_or_fileobj, path_in_repo, **more):
+            sent[path_in_repo] = open(path_or_fileobj, "rb").read()
+
+    monkeypatch.setattr(huggingface_hub, "HfApi", Api)
+    assert boards.texts_out("kern-county") is True and list(sent) == ["raw/kern/texts.tar.gz"]
+    (text / "5357.txt").unlink()
+    text.rmdir()
+    packed = tmp_path / "texts.tar.gz"
+    packed.write_bytes(sent["raw/kern/texts.tar.gz"])
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda repo, file, **more: str(packed))
+    boards.texts_in("kern-county")
+    assert (text / "5357.txt").read_text() == "SUMMARY OF PROCEEDINGS"

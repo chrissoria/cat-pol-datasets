@@ -57,19 +57,7 @@ API_BASE = "https://api.congress.gov/v3"
 API_KEY = os.getenv("CONGRESS_API_KEY") or os.getenv("GOVINFO_API_KEY") or os.getenv("DATA_GOV_API_KEY") or "DEMO_KEY"
 HF_TOKEN = os.getenv("CATLLM_HUGGINGFACE_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or os.getenv("HF_TOKEN")
 VOTES_REPO = "chrissoria/federal-votes"
-# The local bodies kept current at the end of the daily run: the script, what it is run with, and what to call it.
-# Long Beach is not here: its record in Legistar ends in 2023.
-LOCAL_STEPS = (
-    ("build_sd_county", [], "San Diego County tables"),
-    ("build_sd_council", [], "San Diego City Council tables"),
-    ("build_legistar_council", ["--city", "oakland"], "Oakland council tables"),
-    ("build_legistar_council", ["--city", "fresno"], "Fresno council tables"),
-    ("build_legistar_council", ["--city", "salinas"], "Salinas council tables"),
-    ("build_berkeley", [], "Berkeley ordinances"),
-    # Last, since it is the longest: San Diego County's tables copied into the one dataset of county boards, and the
-    # counties longest unread read again for half an hour. Each county's turn comes every few days.
-    ("build_ca_county_boards", ["--read", "--minutes", "30"], "County boards"),
-)
+# California's counties and cities are routines of their own: run_ca_counties.py and run_ca_cities.py.
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1062,17 +1050,6 @@ def main():
             if isinstance(e, KeyboardInterrupt):
                 raise
             log.warning(f"California tables not updated: {e}")
-
-    # Local bodies, each from its own source into its own dataset: one after another, and never fatal.
-    if not args.dry_run:
-        import importlib
-        for module, arguments, what in LOCAL_STEPS:
-            try:
-                importlib.import_module(module).main(arguments)
-            except KeyboardInterrupt:
-                raise
-            except BaseException as e:  # SystemExit, and a panic in a library's import (pdfplumber's, once), stop one step only
-                log.warning(f"{what} not updated: {type(e).__name__}: {e}")
 
     log.info(f"RESULT: federal-bills fetched={len(new_df)} total={len(combined)} pushed={pushed}")
     log.info("Done.")
