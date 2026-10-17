@@ -177,6 +177,8 @@ def test_the_daily_run_reads_the_counties_longest_unread_until_its_time_is_up(mo
     monkeypatch.setattr(boards.time, "time", lambda: next(clock))
     assert boards.read_some(15, tmp_path) == 1  # Napa's reader failed, and the run says so
     assert [argv for argv in called][:2] == [["--city", "lake-county"], ["--city", "napa-county"]]
+    timed = [argv for argv in called if argv[1] in ("santa-clara-county", "sutter-county")]
+    assert all(argv[2] == "--minutes" and int(argv[3]) >= 5 for argv in timed)  # a slow reader is given what time is left
     assert 2 <= len(called) < len(daily)  # time ran out before every county had a turn
 
 

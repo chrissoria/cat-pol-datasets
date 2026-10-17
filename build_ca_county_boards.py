@@ -116,6 +116,10 @@ READERS = {"build_legistar_council.py": ("build_legistar_council", "--city"),
 # the folder is kept in the dataset too, as one file, raw/<county>/texts.tar.gz: put in place before the reader runs
 # and sent back after it (texts_in, texts_out).
 TEXTS = "texts.tar.gz"
+# Readers that read a page per item, slowly, and take a time limit of their own: each is given what is left of the
+# run's, so one county cannot keep the rest waiting (Santa Clara took over an hour on 2026-10-17). What it read by
+# then is published; the rest waits for its next turn.
+TIMED = {"build_iqm2_board.py", "build_legistar_pages_board.py"}
 # Where a reader is first asked something, to see whether the place the run is in may reach it at all: the cloud
 # environment reaches only the hosts allowed in it. Others are asked at the county's own address in bodies.json.
 PROBES = {"build_legistar_council.py": "https://webapi.legistar.com/v1/fresno/bodies"}
@@ -713,7 +717,10 @@ def read_some(minutes, out_dir=OUT_DIR):
         try:
             if flag is None:  # a reader of PDF minutes: its kept texts first
                 texts_in(key)
-            code = importlib.import_module(module).main([flag, key] if flag else [])
+            argv = [flag, key] if flag else []
+            if COUNTIES[key]["builder"] in TIMED:
+                argv += ["--minutes", str(max(5, round(minutes - (time.time() - started) / 60)))]
+            code = importlib.import_module(module).main(argv)
             if not code and flag is None:
                 texts_out(key)
         except KeyboardInterrupt:
