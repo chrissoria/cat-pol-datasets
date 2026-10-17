@@ -153,3 +153,39 @@ def test_pdfs_wait_when_pdfplumber_panics_on_import(monkeypatch):
         return real(name, *args, **kwargs)
     monkeypatch.setattr(builtins, "__import__", imported)
     assert build_sd_county.pdf_reader() is None
+
+
+def test_a_dropped_proxy_connection_is_asked_again_and_a_refusal_is_not(monkeypatch):
+    import requests
+    import build_sd_county
+    monkeypatch.setattr(build_sd_county.time, "sleep", lambda seconds: None)
+    calls = []
+
+    class Answer:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return [{"ok": 1}]
+
+    def dropped(url, **more):
+        calls.append(url)
+        if len(calls) == 1:
+            raise requests.exceptions.ProxyError("Unable to connect to proxy', RemoteDisconnected('Remote end closed connection')")
+        return Answer()
+
+    monkeypatch.setattr(build_sd_county.requests, "get", dropped)
+    assert build_sd_county.api("matters") == [{"ok": 1}] and len(calls) == 2
+    calls.clear()
+
+    def refused(url, **more):
+        calls.append(url)
+        raise requests.exceptions.ProxyError("Tunnel connection failed: 403 Forbidden")
+
+    monkeypatch.setattr(build_sd_county.requests, "get", refused)
+    try:
+        build_sd_county.api("matters")
+    except requests.exceptions.ProxyError:
+        assert len(calls) == 1
+    else:
+        raise AssertionError("a refusal was asked again")

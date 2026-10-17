@@ -128,8 +128,10 @@ def api(path, tries=5, **params):
             answer.raise_for_status()
             return answer.json()
         except (requests.RequestException, ValueError) as e:
-            # A host that is not allowed will not be allowed on a second asking.
-            if attempt == tries - 1 or isinstance(e, requests.exceptions.ProxyError):
+            # A host that is not allowed will not be allowed on a second asking: the proxy says so with a 403. A proxy
+            # that drops a connection to an allowed host ("RemoteDisconnected"; San Bernardino, 2026-10-17) is asked again.
+            refused = isinstance(e, requests.exceptions.ProxyError) and "403" in str(e)
+            if attempt == tries - 1 or refused:
                 raise
             time.sleep(2 * (attempt + 1))
 

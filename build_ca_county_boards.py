@@ -664,12 +664,16 @@ def reachable(key, listed):
     url = PROBES.get(COUNTIES[key]["builder"]) or listed[key].get("url", "")
     if not url:
         return True
-    try:
-        requests.head(url, headers={"User-Agent": "cat-pol-datasets (+https://github.com/chrissoria/cat-pol-datasets)"},
-                      timeout=15, allow_redirects=False)
-        return True
-    except requests.RequestException:
-        return False
+    for attempt in range(2):  # asked twice: the cloud's proxy now and then drops a connection to an allowed host
+        try:
+            requests.head(url, headers={"User-Agent": "cat-pol-datasets (+https://github.com/chrissoria/cat-pol-datasets)"},
+                          timeout=15, allow_redirects=False)
+            return True
+        except requests.RequestException as e:
+            if "403" in str(e):  # the proxy's own refusal: the host is not allowed
+                return False
+            time.sleep(5)
+    return False
 
 
 def read_some(minutes, out_dir=OUT_DIR):
