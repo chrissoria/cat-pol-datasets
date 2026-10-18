@@ -793,7 +793,9 @@ def members_table(votes, meetings):
 def typed(agenda, votes):
     for table, columns in ((agenda, ("sequence", "ayes", "noes", "not_voting", "motions", "motions_read")), (votes, ("motion",))):
         for column in columns:
-            table[column] = table[column].astype(int)
+            # Its votes are held back, so it is published with its counts emptied (without_votes), and its tables are
+            # taken back from there: an empty count is 0 here, and is emptied again when published.
+            table[column] = table[column].fillna(0).astype(int)
     agenda["heading"] = agenda["heading"].astype(bool)
     agenda["votes_read"] = agenda["votes_read"].astype("boolean")
     return agenda, votes

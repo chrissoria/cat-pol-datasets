@@ -656,7 +656,9 @@ def build(key, base, everything, out_dir, since="", limit=0, minutes=0, all_bodi
         votes = votes.sort_values(["date", "meeting_id", "item_id", "motion", "member"]).reset_index(drop=True)
         for table, columns in ((agenda, ("sequence", "ayes", "noes", "not_voting", "motions", "level")), (votes, ("motion",))):
             for column in columns:
-                table[column] = table[column].astype(int)
+                # A county whose votes are held back is published with its counts emptied (without_votes), and its
+                # tables are taken back from there: an empty count is 0 here, and is emptied again when published.
+                table[column] = table[column].fillna(0).astype(int)
         agenda["heading"] = agenda["heading"].astype(bool)
         meetings.loc[meetings["meeting_id"].isin(done), "read_on"] = today()
         council_tables.write_tables({"meetings": meetings, "agenda_items": agenda, "votes": votes}, out_dir)
