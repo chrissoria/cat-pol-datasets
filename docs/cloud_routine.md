@@ -181,7 +181,8 @@ Hosts the environment must allow for every county to be read:
   Benito and Amador documents are sent from: `s3.amazonaws.com`,
   `granicus-azasp-hypatia.s3.amazonaws.com`
 - Others: `public.destinyhosted.com` (Yolo), `file.lacounty.gov` and
-  `lacounty.gov` (Los Angeles), `ocagendaext.oc.gov` (Orange),
+  `lacounty.gov` and the search its page uses, `usy9hv4c4p-dsn.algolia.net` (Los Angeles),
+  `ocagendaext.oc.gov` (Orange),
   `agendanet.saccounty.gov` (Sacramento), `www.stancounty.com` (Stanislaus),
   `web2.co.merced.ca.us` (Merced), `agendasuite.org` (Yuba),
   `agenda.slocounty.ca.gov` (San Luis Obispo), `www.sierracounty.ca.gov`

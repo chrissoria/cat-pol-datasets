@@ -298,3 +298,12 @@ def test_a_pdf_readers_kept_texts_go_to_the_dataset_and_come_back(monkeypatch, t
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda repo, file, **more: str(packed))
     boards.texts_in("kern-county")
     assert (text / "5357.txt").read_text() == "SUMMARY OF PROCEEDINGS"
+
+
+def test_a_civicclerk_countys_host_is_checked_at_its_api_not_its_portal(monkeypatch):
+    import requests
+    asked = []
+    monkeypatch.setattr(requests, "head", lambda url, **more: asked.append(url))
+    listed = {body["id"]: body for body in bodies.read_bodies()}
+    assert boards.reachable("alpine-county", listed) is True
+    assert asked == ["https://alpinecoca.api.civicclerk.com/v1/Events?$top=1"]

@@ -665,7 +665,12 @@ def reachable(key, listed):
     """Whether the run may reach a county's host at all. A refusal is an answer (the reader then stops on it); no
     answer, or a proxy that will not pass the request, is not."""
     import requests
-    url = PROBES.get(COUNTIES[key]["builder"]) or listed[key].get("url", "")
+    builder = COUNTIES[key]["builder"]
+    if builder == "build_civicclerk_board.py":  # the reader asks the county's API, not the portal bodies.json points to
+        import build_civicclerk_board
+        url = f"{build_civicclerk_board.api_of(key)}/Events?$top=1"
+    else:
+        url = PROBES.get(builder) or listed[key].get("url", "")
     if not url:
         return True
     for attempt in range(2):  # asked twice: the cloud's proxy now and then drops a connection to an allowed host
