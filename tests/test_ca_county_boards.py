@@ -182,6 +182,21 @@ def test_the_daily_run_reads_the_counties_longest_unread_until_its_time_is_up(mo
     assert 2 <= len(called) < len(daily)  # time ran out before every county had a turn
 
 
+def test_a_slow_reader_has_half_the_run_at_most(monkeypatch, tmp_path):
+    listed = {body["id"]: body["place"] for body in boards.bodies.read_bodies()}
+    held = pd.DataFrame({"county_fips": [listed["santa-clara-county"]], "read_on": ["2026-10-01"]})
+    monkeypatch.setattr(boards, "COUNTIES", {key: boards.COUNTIES[key] for key in ("sd-county", "santa-clara-county")})
+    monkeypatch.setattr(boards, "held_counties", lambda out_dir, kind=None: held)
+    monkeypatch.setattr(boards.bills, "hf_write_problem", lambda repo=None: None)
+    monkeypatch.setattr(boards.bills, "SCRIPT_DIR", tmp_path)
+    monkeypatch.setattr(boards, "reachable", lambda key, listed: True)
+    monkeypatch.setattr(boards.time, "time", lambda: 0)
+    called = []
+    monkeypatch.setattr(boards.importlib, "import_module", lambda name: type("Reader", (), {"main": staticmethod(lambda argv: called.append(argv) or 0)}))
+    assert boards.read_some(60, tmp_path) == 0
+    assert called == [["--county", "santa-clara-county", "--minutes", "30"]]  # not the whole hour, though the hour is left
+
+
 def test_the_daily_run_reads_nothing_if_the_token_may_not_write(monkeypatch, tmp_path):
     monkeypatch.setattr(boards.bills, "hf_write_problem", lambda repo=None: "the token has no write permission")
     monkeypatch.setattr(boards.importlib, "import_module", lambda name: (_ for _ in ()).throw(AssertionError("a reader was called")))

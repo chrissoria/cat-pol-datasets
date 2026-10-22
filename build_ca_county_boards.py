@@ -724,7 +724,10 @@ def read_some(minutes, out_dir=OUT_DIR):
                 texts_in(key)
             argv = [flag, key] if flag else []
             if COUNTIES[key]["builder"] in TIMED:
-                argv += ["--minutes", str(max(5, round(minutes - (time.time() - started) / 60)))]
+                # No more than half the run, so that a county with a long backlog (Santa Clara) leaves the others their turn;
+                # the reader finishes the meetings it has asked for and publishes after its time, which takes some minutes more.
+                left = minutes - (time.time() - started) / 60
+                argv += ["--minutes", str(max(5, round(min(left, minutes / 2))))]
             code = importlib.import_module(module).main(argv)
             if not code and flag is None:
                 texts_out(key)
