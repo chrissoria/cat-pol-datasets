@@ -245,10 +245,12 @@ def rows_of(page):
     for row in re.split(r"(?i)<tr\b", page):
         name, day, event = _CELL_NAME.search(row), _CELL_DAY.search(row), re.search(r"event_id=(\d+)", row)
         when = _WHEN.search(plain(day[1])) if day else None
-        if not (name and when and event) or when[1].lower() not in _MONTHS or plain(name[1]) != BODY or event[1] in rows:
+        # The portal began putting a screen-reader prefix ("Name, ") in the cell; the body is what follows it.
+        title = re.sub(r"^Name,\s*", "", plain(name[1])) if name else ""
+        if not (name and when and event) or when[1].lower() not in _MONTHS or title != BODY or event[1] in rows:
             continue
         links = [("https:" if link.startswith("//") else "") + html.unescape(link) for link in _HREF.findall(row)]
-        rows[event[1]] = {"meeting_id": event[1], "name": plain(name[1]),
+        rows[event[1]] = {"meeting_id": event[1], "name": title,
                           "date": f"{when[3]}-{_MONTHS[when[1].lower()]:02d}-{int(when[2]):02d}",
                           "time": f"{int(when[4])}:{when[5]} {when[6].upper()}" if when[4] else "",
                           "agenda": next((link for link in links if "AgendaViewer.php" in link), ""),

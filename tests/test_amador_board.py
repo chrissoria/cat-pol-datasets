@@ -183,6 +183,21 @@ def test_the_listing_gives_the_boards_meetings_and_not_the_other_bodies():
     assert list(meetings.columns)[:len(council_tables.COLUMNS["meetings"])] == council_tables.COLUMNS["meetings"]
 
 
+def test_the_listing_is_read_when_the_name_cell_carries_a_screen_reader_prefix():
+    page = """<table><tr class="listingRow"><td class="listItem" headers="Name" scope="row">
+        <span class="visuallyHidden">Name, </span>
+        Board of Supervisors
+      </td>
+      <td class="listItem" headers="Date"> <span class="visuallyHidden">Date, </span> Nov&nbsp;17,&nbsp;2026 - 09:00&nbsp;AM </td>
+      <td class="listItem"><a href="//amador.granicus.com/AgendaViewer.php?view_id=1&event_id=700">Agenda</a></td></tr>
+    <tr class="listingRow"><td class="listItem" headers="Name" scope="row"><span class="visuallyHidden">Name, </span> Board of Equalization </td>
+      <td class="listItem" headers="Date"> Nov&nbsp;17,&nbsp;2026 - 10:00&nbsp;AM </td>
+      <td class="listItem"><a href="//amador.granicus.com/AgendaViewer.php?view_id=1&event_id=701">Agenda</a></td></tr></table>"""
+    meetings = am.meetings_table(am.rows_of(page))
+    assert list(meetings["meeting_id"]) == ["700"]
+    assert (meetings.iloc[0]["date"], meetings.iloc[0]["body"], meetings.iloc[0]["name"]) == ("2026-11-17", "Board of Supervisors", "Board of Supervisors")
+
+
 def test_the_boards_own_minutes_are_picked_out_of_what_an_agenda_has_attached():
     links = ["https://legistarweb-production.s3.amazonaws.com/uploads/attachment/pdf/2698956/June_11__2024_DRAFT_Minutes.pdf",
              "https://legistarweb-production.s3.amazonaws.com/uploads/attachment/pdf/2693080/PC_Minutes_excerpt_05-14-24.pdf",
